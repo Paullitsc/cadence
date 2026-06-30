@@ -1,0 +1,13 @@
+# Target companies for sourcing (Phase 1). Copy to companies.yaml and edit.
+#
+# Feed URL patterns per ATS are defined in the blueprint
+# ("Automated Intern Recruitment Workflow.md", section 2a):
+#   greenhouse -> https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true
+#   lever      -> https://api.lever.co/v0/postings/{slug}?mode=json
+#   ashby      -> https://api.ashbyhq.com/posting-api/job-board/{slug}?includeCompensation=true
+#
+# Do NOT invent slugs. Find each company's real board token on its careers page.
+companies:
+  - name: Example Corp     # placeholder — replace with a real target
+    ats: greenhouse        # greenhouse | lever | ashby
+    slug: REPLACE_ME       # the board_token / company / job-board name in the URL

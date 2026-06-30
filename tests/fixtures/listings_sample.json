@@ -1,0 +1,20 @@
+[
+  {
+    "company_name": "Example Corp",
+    "title": "Software Engineer Intern",
+    "locations": ["Remote", "New York, NY"],
+    "url": "https://example.com/jobs/123",
+    "date_posted": "2026-06-01",
+    "active": true,
+    "source": "synthetic-fixture"
+  },
+  {
+    "company_name": "Placeholder Labs",
+    "title": "Data Science Intern",
+    "locations": "San Francisco, CA",
+    "url": "https://example.org/careers/ds-001/",
+    "date_posted": 1717200000,
+    "active": false,
+    "source": "synthetic-fixture"
+  }
+]

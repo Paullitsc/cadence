@@ -1,0 +1,4 @@
+# Dev dependencies (pip fallback for `uv sync --extra dev`).
+-r requirements.txt
+pytest>=8.2
+ruff>=0.5
