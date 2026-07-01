@@ -1,0 +1,27 @@
+[
+  {
+    "text": "Backend Engineering Intern",
+    "hostedUrl": "https://jobs.lever.co/example/abc-123",
+    "applyUrl": "https://jobs.lever.co/example/abc-123/apply",
+    "categories": {
+      "commitment": "Internship",
+      "department": "Engineering",
+      "location": "San Francisco",
+      "team": "Platform",
+      "allLocations": ["San Francisco", "Remote - US"]
+    },
+    "createdAt": 1781109739214,
+    "country": "US"
+  },
+  {
+    "text": "Design Intern",
+    "hostedUrl": "https://jobs.lever.co/example/def-456",
+    "categories": {"location": "London"},
+    "createdAt": 1781000000000
+  },
+  {
+    "text": "No URL role",
+    "categories": {"location": "Berlin"},
+    "createdAt": 1780000000000
+  }
+]

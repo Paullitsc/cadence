@@ -17,11 +17,10 @@ dist/
 # Data / runtime artifacts
 data/*.db
 data/*.sqlite3
+data/digests/
 *.log
 
 # OS / editor
 .DS_Store
 .idea/
 .vscode/
-
-*.md

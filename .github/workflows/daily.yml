@@ -1,0 +1,60 @@
+name: Daily sourcing
+
+# Phase 1 daily run: source + track internships, write the digest.
+# 13:00 UTC ≈ early US morning. GitHub Actions cron is UTC-only, ≥5-min
+# granularity, and can be delayed 10–30+ min at peak — all fine for a daily job.
+on:
+  schedule:
+    - cron: "0 13 * * *"
+  workflow_dispatch: {}        # allow manual runs from the Actions tab
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-sourcing
+  cancel-in-progress: false
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    env:
+      # Repo *variables* (Settings → Secrets and variables → Actions → Variables)
+      STORAGE_BACKEND: ${{ vars.STORAGE_BACKEND || 'supabase' }}
+      ENABLE_JSEARCH: ${{ vars.ENABLE_JSEARCH || 'false' }}
+      LOG_LEVEL: INFO
+      # Repo *secrets* (same page → Secrets). Unset ones are empty strings.
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv (+ Python 3.12)
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run daily pipeline
+        run: uv run python -m internship_pipeline.run_daily
+
+      - name: Upload digest artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest
+          path: data/digests/
+          if-no-files-found: ignore
+
+      # GitHub does NOT notify on scheduled-workflow failures. This is a STUB —
+      # wire a real Slack/email alert here in Phase 4 (SLACK_WEBHOOK_URL).
+      - name: Notify on failure (stub)
+        if: failure()
+        run: |
+          echo "::warning title=Daily sourcing failed::Wire a real alert in Phase 4 (SLACK_WEBHOOK_URL)."
+          # Phase 4 example:
+          # curl -fsS -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"Daily internship sourcing run failed."}' "$SLACK_WEBHOOK_URL"

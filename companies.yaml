@@ -1,0 +1,18 @@
+# Working sourcing config read by the pipeline (COMPANIES_FILE, default this file).
+# Copied from companies.example.yaml — replace the REPLACE_ME_* slugs with REAL
+# board tokens from each company's careers page, then commit. Entries that still
+# hold a placeholder slug are skipped at runtime, so this runs clean as-is.
+#
+# Schema + feed URLs are documented in companies.example.yaml.
+companies:
+  - name: Example Greenhouse Co
+    ats: greenhouse
+    slug: REPLACE_ME_GREENHOUSE
+
+  - name: Example Lever Co
+    ats: lever
+    slug: REPLACE_ME_LEVER
+
+  - name: Example Ashby Co
+    ats: ashby
+    slug: REPLACE_ME_ASHBY

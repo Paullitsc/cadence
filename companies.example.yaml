@@ -1,13 +1,39 @@
-# Target companies for sourcing (Phase 1). Copy to companies.yaml and edit.
+# Target companies for sourcing (Phase 1).
 #
-# Feed URL patterns per ATS are defined in the blueprint
-# ("Automated Intern Recruitment Workflow.md", section 2a):
+# This is the TEMPLATE. Copy it to `companies.yaml` and replace every `slug`
+# with a real board token, then commit `companies.yaml` (it has no secrets — ATS
+# board tokens are public). The daily GitHub Actions run reads `companies.yaml`
+# from the checkout, so it must be committed for the cron to source anything.
+#
+#   cp companies.example.yaml companies.yaml   # then edit the slugs
+#
+# Schema (list under the `companies:` key). Each entry:
+#   name: str   # human label; also used as company_name for Lever/Ashby feeds
+#               # (those feeds don't return a company name; Greenhouse does)
+#   ats:  str   # one of: greenhouse | lever | ashby
+#   slug: str   # the board token / company / job-board name in the feed URL
+#
+# Feed URL each ATS is fetched from (EXACTLY these — from the blueprint, section 2a):
 #   greenhouse -> https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true
 #   lever      -> https://api.lever.co/v0/postings/{slug}?mode=json
 #   ashby      -> https://api.ashbyhq.com/posting-api/job-board/{slug}?includeCompensation=true
 #
-# Do NOT invent slugs. Find each company's real board token on its careers page.
+# Find each slug on the company's real careers page (it's the token in the board
+# URL). Do NOT invent slugs. Entries whose slug is still a REPLACE_ME_* placeholder
+# are skipped at runtime, so this template is safe to run as-is (it sources nothing).
 companies:
-  - name: Example Corp     # placeholder — replace with a real target
-    ats: greenhouse        # greenhouse | lever | ashby
-    slug: REPLACE_ME       # the board_token / company / job-board name in the URL
+  - name: Example Greenhouse Co   # e.g. the token in boards.greenhouse.io/<slug>
+    ats: greenhouse
+    slug: REPLACE_ME_GREENHOUSE
+
+  - name: Example Lever Co        # e.g. the token in jobs.lever.co/<slug>
+    ats: lever
+    slug: REPLACE_ME_LEVER
+
+  - name: Example Ashby Co        # e.g. the token in jobs.ashbyhq.com/<slug>
+    ats: ashby
+    slug: REPLACE_ME_ASHBY
+
+  - name: Another Greenhouse Co
+    ats: greenhouse
+    slug: REPLACE_ME_GREENHOUSE_2

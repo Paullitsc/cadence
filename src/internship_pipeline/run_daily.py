@@ -43,11 +43,14 @@ log = get_logger(__name__)
 def run_pipeline(
     stages: Optional[list[str]] = None,
     settings: Optional[Settings] = None,
+    persist: bool = True,
 ) -> RunRecord:
     """Execute the given stages (default: all) and return a RunRecord.
 
     Does not configure logging (entrypoints do that) so it is safe to call from
-    tests and other code without clobbering handlers.
+    tests and other code without clobbering handlers. When ``persist`` is True the
+    final RunRecord is written to the ``runs`` table (best-effort; a storage error
+    is logged, not raised).
     """
     settings = settings or get_settings()
     names = stages if stages is not None else list(REGISTRY)
@@ -81,6 +84,18 @@ def run_pipeline(
         record.status = "partial"
     else:
         record.status = "success"
+
+    if persist:
+        try:
+            from .storage import get_storage
+
+            storage = get_storage(settings)
+            try:
+                storage.record_run(record)
+            finally:
+                storage.close()
+        except Exception as exc:  # observability must not break the run
+            log.warning("failed to persist run record", extra={"run_id": run_id, "error": repr(exc)})
 
     log.info(
         "run end",

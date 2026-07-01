@@ -28,6 +28,26 @@ class Settings(BaseSettings):
     database_path: str = "data/pipeline.db"
     companies_file: str = "companies.yaml"
 
+    # --- Phase 1: sourcing ---
+    # SimplifyJobs raw listings.json (path/branch confirmed against the live repo).
+    enable_simplify: bool = True
+    simplify_listings_url: str = (
+        "https://raw.githubusercontent.com/SimplifyJobs/"
+        "Summer2026-Internships/dev/.github/scripts/listings.json"
+    )
+    # Optional tertiary aggregator (JSearch / RapidAPI). Off by default; the free
+    # tier is hard-capped at 200 req/month, so keep page counts tiny.
+    enable_jsearch: bool = False
+    rapidapi_key: Optional[str] = None  # required only when enable_jsearch=True
+    jsearch_host: str = "jsearch.p.rapidapi.com"
+    jsearch_query: str = "software engineer intern"
+    jsearch_pages: int = 1
+
+    # HTTP + digest
+    http_timeout: float = 20.0
+    http_max_retries: int = 3
+    digest_dir: str = "data/digests"
+
     # --- Secrets (optional until their phase) ---
     anthropic_api_key: Optional[str] = None  # Phase 2+
     supabase_url: Optional[str] = None  # Phase 1+ (if storage_backend=supabase)

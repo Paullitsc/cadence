@@ -1,0 +1,22 @@
+{
+  "status": "OK",
+  "request_id": "test",
+  "data": [
+    {
+      "job_id": "j1",
+      "employer_name": "Example Corp",
+      "job_title": "Software Engineering Intern",
+      "job_apply_link": "https://example.com/apply/j1",
+      "job_city": "Seattle",
+      "job_state": "WA",
+      "job_country": "US",
+      "job_posted_at_datetime_utc": "2026-06-15T00:00:00.000Z"
+    },
+    {
+      "job_id": "j2",
+      "employer_name": null,
+      "job_title": "Missing employer (skipped)",
+      "job_apply_link": "https://example.com/apply/j2"
+    }
+  ]
+}
