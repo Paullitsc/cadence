@@ -24,3 +24,9 @@ data/digests/
 .DS_Store
 .idea/
 .vscode/
+
+# Local-only planning/reference docs (not part of the repo)
+/ACTIONS_FOR_PAUL.md
+/Automated Intern Recruitment Workflow.md
+/CLAUDE.md
+/assignment.md

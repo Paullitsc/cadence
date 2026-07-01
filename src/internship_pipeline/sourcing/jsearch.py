@@ -4,10 +4,13 @@ Gated behind ``ENABLE_JSEARCH`` and a ``RAPIDAPI_KEY``; the ``source`` stage ski
 it cleanly when either is absent. The free BASIC plan is hard-capped at 200
 requests/month, so keep ``jsearch_pages`` at 1 (one request per run ≈ 30/month).
 
-NOTE: unlike the ATS feeds, the JSearch response shape could NOT be probed (it
-needs a key), so the field names below are marked ``# VERIFY`` — confirm against a
-real response and tell me if any differ. Parsing is defensive, so a wrong field
-name degrades to "skip row" rather than crashing.
+Confirmed live against RapidAPI on 2026-07-01: the search endpoint is
+``GET /search-v2`` (the plain ``/search`` path used by older docs/blueprints
+404s — JSearch has since versioned it), and the response nests jobs one level
+deeper than before: ``{"data": {"jobs": [...], "cursor": ...}}`` rather than
+``{"data": [...]}``. Per-job field names (``job_title``, ``job_apply_link``,
+etc.) are unchanged. Parsing stays defensive regardless (a missing/renamed
+field degrades to "skip row" rather than crashing).
 """
 
 from __future__ import annotations
@@ -25,10 +28,9 @@ log = get_logger(__name__)
 
 def parse_jsearch(payload: dict[str, Any]) -> list[Job]:
     jobs: list[Job] = []
-    for d in payload.get("data") or []:
-        # VERIFY: JSearch `data[]` field names (employer_name / job_title /
-        # job_apply_link / job_city / job_state / job_country /
-        # job_posted_at_datetime_utc). Could not probe without a RapidAPI key.
+    data = payload.get("data") or {}
+    rows = data.get("jobs") if isinstance(data, dict) else data
+    for d in rows or []:
         title = d.get("job_title")
         url = d.get("job_apply_link") or d.get("job_google_link")
         company = d.get("employer_name")
@@ -63,7 +65,7 @@ def fetch_jsearch(
     headers = {"X-RapidAPI-Key": key, "X-RapidAPI-Host": host}
     data = get_json(
         client,
-        f"https://{host}/search",
+        f"https://{host}/search-v2",
         params={"query": query, "page": "1", "num_pages": str(num_pages)},
         headers=headers,
         max_retries=max_retries,
