@@ -7,10 +7,13 @@ validated facts (API endpoints, costs, legal guardrails) live in
 [`Automated Intern Recruitment Workflow.md`](./Automated%20Intern%20Recruitment%20Workflow.md)
 — that blueprint is the single source of truth.
 
-> **Status: Phase 1 (sourcing + tracking) — complete.** Every run pulls a fresh,
-> deduped list of new internships from public ATS feeds + SimplifyJobs (+ optional
-> JSearch), stores them (Supabase/SQLite), and writes an HTML digest of "new jobs
-> today". Zero LLM cost. Stages 2–4 remain **stubs**, each built in its own phase.
+> **Status: Phase 2 (résumé slicing + application drafting) — complete.** On top of
+> Phase 1 sourcing, each new job is scored against a tagged master résumé by
+> embedding similarity, its JD keywords are extracted, a one-page résumé is tailored
+> from **real bullets only** (Claude Haiku, with a hard anti-hallucination guardrail)
+> and rendered to PDF via RenderCV, and standard application answers are drafted —
+> all stored `pending_review`. Runs end-to-end with **zero credentials** (deterministic
+> fallbacks). Stages 3–4 remain **stubs**, each built in its own phase.
 
 ## Phased roadmap
 
@@ -18,8 +21,8 @@ validated facts (API endpoints, costs, legal guardrails) live in
 | ----- | ----- | ----- |
 | 0 | Repo scaffold, tooling, config, logging, models, stage skeleton, tests | ✅ done |
 | 1 | Sourcing + tracking (ATS feeds, SimplifyJobs JSON, dedupe, store, digest) | ✅ done |
-| 2 | Résumé slicing + application drafting (embeddings, Haiku tailoring, RenderCV) | ⬜ stub |
-| 3 | Outreach drafting (contact lookup, copy, pending-review queue) | ⬜ stub |
+| 2 | Résumé slicing + application drafting (embeddings, Haiku tailoring, RenderCV) | ✅ done |
+| 3 | Outreach drafting (contact lookup, grounded copy, human-gated send) | ✅ done |
 | 4 | Full scheduling, dual-trigger, digest, alerts | ⬜ stub |
 
 ## Project layout
@@ -73,6 +76,70 @@ are skipped, so it runs clean before you fill them in.
 **Storage:** `STORAGE_BACKEND=supabase` (primary; needs `SUPABASE_URL`/`SUPABASE_KEY`,
 run `src/internship_pipeline/storage/sql/postgres.sql` once) or `sqlite` (local
 default, `data/pipeline.db`). If Supabase creds are missing it falls back to SQLite.
+
+## Phase 2: how tailoring works
+
+`match_and_slice()` takes the day's new jobs and, for each one, uses the tagged
+`master_resume.yaml` (single source of truth) to:
+
+1. **Score fit** — embed the JD and every résumé bullet (`sentence-transformers`
+   locally by default; a deterministic hashing embedder is the offline fallback),
+   take cosine similarity, and set `fit_score` = mean of the top-K bullet
+   similarities. Below `FIT_SCORE_THRESHOLD`, the job is skipped.
+2. **Extract JD keywords** — cheap, deterministic frequency + tech-vocab scoring
+   (no LLM), used both to bias tailoring and to store on the application.
+3. **Tailor a one-page résumé** — Claude Haiku (`ANTHROPIC_MODEL`, low temperature,
+   master-résumé context sent with prompt caching) selects/reorders/rephrases the
+   top-K **real** bullets. A hard Python guardrail then rejects any rephrase that
+   introduces a token not present in the tailoring input, falling back to the
+   verbatim bullet — so no fabricated metric, employer, or skill can reach the
+   résumé. With no API key, this degrades to deterministic select-only.
+4. **Render a PDF** — one `rendercv render` CLI call turns the tailored YAML into a
+   PDF; the artifact path is stored on the application (YAML kept if RenderCV isn't
+   installed).
+
+`prepare_applications()` then drafts answers to standard application questions
+(real-data-only) per job. Everything is written to the `applications` table as
+`pending_review` — **nothing is ever auto-submitted**. High-fit or target-company
+roles are flagged `human_review`.
+
+Every heavy dependency (`sentence-transformers`, `anthropic`, `rendercv`) is
+lazy-imported and optional — the pipeline always runs with zero credentials. Install
+what you want with the extras: `uv sync --extra phase2` (or `--extra ml` / `--extra
+llm` / `--extra render`).
+
+## Phase 3: how outreach works
+
+`draft_outreach()` runs after tailoring and, for each prepared application:
+
+1. **Resolve a contact** — tries Hunter.io then Apollo.io **only** when a provider is
+   enabled + keyed, only for high-priority roles (`OUTREACH_PAID_LOOKUP_HIGH_PRIORITY_ONLY`),
+   and only within a hard per-run cap (`OUTREACH_MAX_LOOKUPS_PER_RUN`) — the free-tier
+   guard. Otherwise (and by default) it falls back to a company email-pattern **guess**
+   returned as `verified=False`, `confidence=None` with an explicit "this is a guess"
+   note, so an unconfirmed address is never mistaken for a real one.
+2. **Draft grounded copy** — a short email + a ≤300-char LinkedIn note, reusing the
+   **same real top bullets** Phase 2 retrieved. Claude when configured, deterministic
+   template otherwise; either way the same Python guardrail rejects any field that
+   introduces a fact outside the job text + real profile, falling back to the grounded
+   template. No fabricated project, metric, or employer can reach a message.
+3. **Persist two `pending_review` rows** — one `email` (with the CAN-SPAM footer baked
+   into the exact body that would send) and one `linkedin` (draft-only, no footer).
+   Recipients on the do-not-contact list (DB + optional `OUTREACH_SUPPRESSION_FILE`)
+   are flagged `suppressed`.
+
+**Nothing is ever auto-sent.** Sending is a separate, manual command with its own gate:
+
+```bash
+python -m internship_pipeline.outreach.approve_and_send <outreach_id>        # PREVIEW only
+python -m internship_pipeline.outreach.approve_and_send <outreach_id> --yes  # actually send
+python -m internship_pipeline.outreach.suppress add someone@company.com      # never contact
+```
+
+The send gate refuses unless: the channel is `email` (LinkedIn is draft-only — you send
+those yourself), a real recipient exists, the contact isn't suppressed, the CAN-SPAM
+footer is present, and `OUTREACH_PHYSICAL_ADDRESS` is a real address (not the shipped
+placeholder). Gmail is reached only after an explicit `--yes`. See `ACTIONS_FOR_PAUL.md`.
 
 ## Setup
 

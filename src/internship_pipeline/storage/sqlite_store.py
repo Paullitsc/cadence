@@ -12,10 +12,11 @@ import sqlite3
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from ..logging_config import get_logger
-from ..models import Job, RunRecord
-from .base import Storage, UpsertResult, chunked
+from ..models import Application, Job, Outreach, RunRecord
+from .base import Storage, UpsertResult, chunked, suppression_matches
 
 log = get_logger(__name__)
 
@@ -42,6 +43,57 @@ CREATE TABLE IF NOT EXISTS runs (
     status      TEXT,
     counts      TEXT,              -- JSON object
     errors      TEXT               -- JSON array
+);
+
+CREATE TABLE IF NOT EXISTS applications (
+    dedupe_key           TEXT PRIMARY KEY,   -- FK -> jobs.dedupe_key
+    company_name         TEXT NOT NULL,
+    title                TEXT NOT NULL,
+    url                  TEXT NOT NULL,
+    fit_score            REAL NOT NULL DEFAULT 0,
+    keywords             TEXT,               -- JSON array
+    tailored_resume_path TEXT,               -- rendered PDF path (nullable)
+    tailored_resume_yaml TEXT,               -- RenderCV YAML (auditable)
+    drafted_answers      TEXT,               -- JSON object: question -> answer
+    human_review         INTEGER NOT NULL DEFAULT 0,
+    status               TEXT NOT NULL DEFAULT 'pending_review',
+    created_at           TEXT NOT NULL,
+    updated_at           TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_applications_status ON applications (status);
+
+CREATE TABLE IF NOT EXISTS outreach (
+    outreach_id          TEXT PRIMARY KEY,   -- make_outreach_id(dedupe_key, channel)
+    dedupe_key           TEXT NOT NULL,      -- FK -> jobs.dedupe_key
+    company_name         TEXT NOT NULL,
+    title                TEXT NOT NULL,
+    url                  TEXT NOT NULL,
+    channel              TEXT NOT NULL,      -- email | linkedin (linkedin = draft-only)
+    contact_name         TEXT,
+    contact_email        TEXT,
+    contact_title        TEXT,
+    contact_source       TEXT NOT NULL DEFAULT 'none',   -- hunter | apollo | pattern_guess | none
+    contact_confidence   INTEGER,           -- 0-100 (NULL for a pattern guess)
+    contact_verified     INTEGER NOT NULL DEFAULT 0,
+    contact_note         TEXT,
+    subject              TEXT,              -- email only
+    body                 TEXT NOT NULL DEFAULT '',
+    status               TEXT NOT NULL DEFAULT 'pending_review',
+    suppressed           INTEGER NOT NULL DEFAULT 0,
+    human_review         INTEGER NOT NULL DEFAULT 0,
+    used_llm             INTEGER NOT NULL DEFAULT 0,
+    sent_at              TEXT,
+    provider_message_id  TEXT,
+    created_at           TEXT NOT NULL,
+    updated_at           TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_outreach_status ON outreach (status);
+CREATE INDEX IF NOT EXISTS idx_outreach_dedupe ON outreach (dedupe_key);
+
+CREATE TABLE IF NOT EXISTS suppressions (
+    entry       TEXT PRIMARY KEY,   -- email address OR bare domain, lowercased
+    reason      TEXT,
+    created_at  TEXT NOT NULL
 );
 """
 
@@ -129,3 +181,159 @@ class SQLiteStore(Storage):
                     json.dumps(run.errors),
                 ),
             )
+
+    def save_application(self, app: Application) -> None:
+        now = _now()
+        with self._conn() as conn:
+            # Preserve created_at on update; refresh updated_at.
+            row = conn.execute(
+                "SELECT created_at FROM applications WHERE dedupe_key=?", (app.dedupe_key,)
+            ).fetchone()
+            created = row[0] if row else now
+            conn.execute(
+                "INSERT OR REPLACE INTO applications (dedupe_key, company_name, title, url, "
+                "fit_score, keywords, tailored_resume_path, tailored_resume_yaml, "
+                "drafted_answers, human_review, status, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    app.dedupe_key,
+                    app.company_name,
+                    app.title,
+                    app.url,
+                    app.fit_score,
+                    json.dumps(app.keywords),
+                    app.tailored_resume_path,
+                    app.tailored_resume_yaml,
+                    json.dumps(app.drafted_answers),
+                    int(app.human_review),
+                    app.status,
+                    created,
+                    now,
+                ),
+            )
+
+    def get_application(self, dedupe_key: str) -> Optional[Application]:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM applications WHERE dedupe_key=?", (dedupe_key,)
+            ).fetchone()
+        if row is None:
+            return None
+        return Application(
+            dedupe_key=row["dedupe_key"],
+            company_name=row["company_name"],
+            title=row["title"],
+            url=row["url"],
+            fit_score=row["fit_score"],
+            keywords=json.loads(row["keywords"] or "[]"),
+            tailored_resume_path=row["tailored_resume_path"],
+            tailored_resume_yaml=row["tailored_resume_yaml"],
+            drafted_answers=json.loads(row["drafted_answers"] or "{}"),
+            human_review=bool(row["human_review"]),
+            status=row["status"],
+        )
+
+    # --- Phase 3: outreach + suppression list ---
+
+    def save_outreach(self, outreach: Outreach) -> None:
+        now = _now()
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT created_at FROM outreach WHERE outreach_id=?", (outreach.outreach_id,)
+            ).fetchone()
+            created = row[0] if row else now
+            conn.execute(
+                "INSERT OR REPLACE INTO outreach (outreach_id, dedupe_key, company_name, title, "
+                "url, channel, contact_name, contact_email, contact_title, contact_source, "
+                "contact_confidence, contact_verified, contact_note, subject, body, status, "
+                "suppressed, human_review, used_llm, sent_at, provider_message_id, created_at, "
+                "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    outreach.outreach_id,
+                    outreach.dedupe_key,
+                    outreach.company_name,
+                    outreach.title,
+                    outreach.url,
+                    outreach.channel,
+                    outreach.contact_name,
+                    outreach.contact_email,
+                    outreach.contact_title,
+                    outreach.contact_source,
+                    outreach.contact_confidence,
+                    int(outreach.contact_verified),
+                    outreach.contact_note,
+                    outreach.subject,
+                    outreach.body,
+                    outreach.status,
+                    int(outreach.suppressed),
+                    int(outreach.human_review),
+                    int(outreach.used_llm),
+                    outreach.sent_at,
+                    outreach.provider_message_id,
+                    created,
+                    now,
+                ),
+            )
+
+    @staticmethod
+    def _row_to_outreach(row: sqlite3.Row) -> Outreach:
+        return Outreach(
+            outreach_id=row["outreach_id"],
+            dedupe_key=row["dedupe_key"],
+            company_name=row["company_name"],
+            title=row["title"],
+            url=row["url"],
+            channel=row["channel"],
+            contact_name=row["contact_name"],
+            contact_email=row["contact_email"],
+            contact_title=row["contact_title"],
+            contact_source=row["contact_source"],
+            contact_confidence=row["contact_confidence"],
+            contact_verified=bool(row["contact_verified"]),
+            contact_note=row["contact_note"],
+            subject=row["subject"],
+            body=row["body"] or "",
+            status=row["status"],
+            suppressed=bool(row["suppressed"]),
+            human_review=bool(row["human_review"]),
+            used_llm=bool(row["used_llm"]),
+            sent_at=row["sent_at"],
+            provider_message_id=row["provider_message_id"],
+        )
+
+    def get_outreach(self, outreach_id: str) -> Optional[Outreach]:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM outreach WHERE outreach_id=?", (outreach_id,)
+            ).fetchone()
+        return None if row is None else self._row_to_outreach(row)
+
+    def list_outreach(self, status: Optional[str] = None) -> list[Outreach]:
+        with self._conn() as conn:
+            if status is None:
+                rows = conn.execute(
+                    "SELECT * FROM outreach ORDER BY created_at DESC"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM outreach WHERE status=? ORDER BY created_at DESC", (status,)
+                ).fetchall()
+        return [self._row_to_outreach(r) for r in rows]
+
+    def add_suppression(self, entry: str, reason: Optional[str] = None) -> None:
+        normalized = (entry or "").strip().lower()
+        if not normalized:
+            return
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO suppressions (entry, reason, created_at) VALUES (?,?,?)",
+                (normalized, reason, _now()),
+            )
+
+    def list_suppressions(self) -> list[str]:
+        with self._conn() as conn:
+            rows = conn.execute("SELECT entry FROM suppressions").fetchall()
+        return [r[0] for r in rows]
+
+    def is_suppressed(self, email: str) -> bool:
+        return suppression_matches(email, self.list_suppressions())

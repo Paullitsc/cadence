@@ -60,6 +60,10 @@ class Job(BaseModel):
     active: bool = True
     source: Optional[str] = None
     source_feed: Optional[JobSource] = None
+    # Full job-description text. The blueprint's Phase 2 matching step embeds the
+    # JD; Phase 1 sourcing does not capture it, so this is optional and Phase 2
+    # falls back to title/company text when it is absent.
+    description: Optional[str] = None
 
     @field_validator("locations", mode="before")
     @classmethod
@@ -79,6 +83,76 @@ class Job(BaseModel):
         """Stable dedupe key (blueprint: dedupe by URL/hash)."""
         digest = hashlib.sha256(normalize_url(self.url).encode("utf-8"))
         return digest.hexdigest()[:16]
+
+
+class Application(BaseModel):
+    """A prepared (never auto-submitted) application, for the ``applications`` table.
+
+    Phase 2 owns this shape (blueprint: "store tailored resume + drafted common
+    answers per job in the tracker"). Keyed by the job's ``dedupe_key`` so each job
+    has at most one application row. Everything stays ``pending_review`` — the
+    system prepares; the human submits.
+    """
+
+    dedupe_key: str  # == Job.dedupe_key(); links back to the jobs table
+    company_name: str
+    title: str
+    url: str
+    fit_score: float = 0.0
+    keywords: list[str] = Field(default_factory=list)
+    tailored_resume_path: Optional[str] = None  # rendered PDF (or None if not rendered)
+    tailored_resume_yaml: Optional[str] = None  # RenderCV YAML (auditable source)
+    drafted_answers: dict[str, str] = Field(default_factory=dict)  # question -> answer
+    human_review: bool = False  # high-priority role → flagged for a closer human look
+    status: str = "pending_review"  # never auto-submitted
+
+
+def make_outreach_id(dedupe_key: str, channel: str) -> str:
+    """Stable id for one outreach draft: one email + one LinkedIn note per job.
+
+    Deterministic (not random) so re-running the pipeline upserts the same rows
+    instead of piling up duplicates — the stage stays idempotent, and the
+    ``approve-and-send <outreach_id>`` command has a stable handle.
+    """
+    return f"{dedupe_key}-{channel}"
+
+
+class Outreach(BaseModel):
+    """A drafted, never-auto-sent cold-outreach message, for the ``outreach`` table.
+
+    Phase 3 owns this shape (assignment #3: contact, channel, draft body, status,
+    suppression flag). One row per (job, channel). ``channel="email"`` is the only
+    channel with a send path — and only behind the manual ``approve-and-send``
+    command. ``channel="linkedin"`` is DRAFT-ONLY: LinkedIn automation/scraping is a
+    ban-risk red zone (blueprint finding #6); the system never sends it.
+    """
+
+    outreach_id: str  # == make_outreach_id(dedupe_key, channel)
+    dedupe_key: str  # == Job.dedupe_key(); links back to the jobs/applications tables
+    company_name: str
+    title: str
+    url: str
+    channel: str  # "email" | "linkedin"
+
+    # Contact (assignment #1). For a pattern GUESS, verified=False and confidence is
+    # None — we never present a guessed address as certain.
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_title: Optional[str] = None  # recipient's role/position, if known
+    contact_source: str = "none"  # "hunter" | "apollo" | "pattern_guess" | "none"
+    contact_confidence: Optional[int] = None  # provider confidence 0-100 (None if guessed)
+    contact_verified: bool = False
+    contact_note: Optional[str] = None  # e.g. "guessed from domain — verify before sending"
+
+    subject: Optional[str] = None  # email only
+    body: str = ""  # for email this INCLUDES the CAN-SPAM footer that will be sent
+    status: str = "pending_review"  # pending_review | approved | sent | suppressed | failed
+    suppressed: bool = False  # contact is on the suppression list → blocked from send
+    human_review: bool = False
+    used_llm: bool = False
+
+    sent_at: Optional[str] = None
+    provider_message_id: Optional[str] = None  # Gmail message id after a successful send
 
 
 class RunRecord(BaseModel):

@@ -31,7 +31,8 @@ def build_client(timeout: float = 20.0) -> httpx.Client:
     )
 
 
-def _is_retryable(exc: BaseException) -> bool:
+def is_retryable(exc: BaseException) -> bool:
+    """Retry only transient failures: transport errors and 429/5xx (not 4xx)."""
     if isinstance(exc, httpx.TransportError):
         return True
     if isinstance(exc, httpx.HTTPStatusError):
@@ -53,10 +54,35 @@ def get_json(
         reraise=True,
         stop=stop_after_attempt(max(1, max_retries)),
         wait=wait_exponential(multiplier=0.5, min=0.5, max=8),
-        retry=retry_if_exception(_is_retryable),
+        retry=retry_if_exception(is_retryable),
     )
     def _do() -> Any:
         resp = client.get(url, params=params, headers=headers)
+        resp.raise_for_status()
+        return resp.json()
+
+    return _do()
+
+
+def post_json(
+    client: httpx.Client,
+    url: str,
+    *,
+    json: Optional[dict[str, Any]] = None,
+    params: Optional[dict[str, Any]] = None,
+    headers: Optional[dict[str, str]] = None,
+    max_retries: int = 3,
+) -> Any:
+    """POST a JSON body to ``url`` and return parsed JSON, retrying transient failures."""
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(max(1, max_retries)),
+        wait=wait_exponential(multiplier=0.5, min=0.5, max=8),
+        retry=retry_if_exception(is_retryable),
+    )
+    def _do() -> Any:
+        resp = client.post(url, json=json, params=params, headers=headers)
         resp.raise_for_status()
         return resp.json()
 

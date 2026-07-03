@@ -1,0 +1,43 @@
+# Test fixture: a small, non-placeholder master résumé. Deliberately contains no
+# "google", "rust", "revenue", or "400" tokens so the anti-hallucination test can
+# assert those never leak into tailored output.
+placeholder: false
+name: Test Candidate
+email: test@example.com
+location: Testville
+links:
+  linkedin: https://www.linkedin.com/in/testcand
+  github: https://github.com/testcand
+summary: Backend-focused computer science student.
+education:
+  - institution: Test University
+    area: Computer Science
+    degree: BSc
+    start_date: "2023-09"
+    end_date: "2027-05"
+    highlights:
+      - "GPA 3.8/4.0"
+experiences:
+  - company: Acme Labs
+    role: Software Engineer Intern
+    location: Remote
+    start_date: "2025-05"
+    end_date: "2025-08"
+    bullets:
+      - text: "Built a data pipeline processing two million events per day using Python and Kafka."
+        tags: [backend, data, python, kafka]
+        metrics: true
+      - text: "Added integration tests covering the ingestion service in Python."
+        tags: [testing, python]
+        metrics: false
+projects:
+  - name: Query Planner
+    url: https://github.com/testcand/query-planner
+    bullets:
+      - text: "Implemented a SQL query planner in Java for a teaching database."
+        tags: [java, databases]
+        metrics: false
+skills:
+  languages: [Python, Java, SQL]
+  frameworks: [Flask]
+  tools: [Git, Docker]

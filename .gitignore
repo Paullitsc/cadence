@@ -13,12 +13,24 @@ dist/
 # Env / secrets
 .env
 *.local
+# Gmail OAuth (Phase 3): client-secrets + minted token — never commit these
+data/*token*.json
+data/*credentials*.json
 
 # Data / runtime artifacts
 data/*.db
 data/*.sqlite3
 data/digests/
+data/resumes/
+rendercv_output/
 *.log
+
+# Personal résumé content — real name/contact/experience (PII). Only the
+# .example.yaml templates (placeholder data) are tracked.
+/master_resume.yaml
+/Paul_CV.yaml
+/Resume.tex
+*_CV.yaml
 
 # OS / editor
 .DS_Store

@@ -18,6 +18,19 @@ dev = [
     "pytest>=8.2",
     "ruff>=0.5",
 ]
+# Phase 2 heavy/optional deps. All are lazy-imported: the pipeline (and the test
+# suite) runs without them — embeddings fall back to a deterministic hashing
+# embedder, tailoring/answers to deterministic select-only, and PDF render is
+# skipped (YAML still written). Install the ones you want.
+ml = ["sentence-transformers>=2.2"]       # local embeddings (default backend)
+llm = ["anthropic>=0.40"]                 # Claude Haiku tailoring/answers
+render = ["rendercv[full]>=1.0"]          # YAML -> PDF (full: CLI + Typst engine + fonts)
+phase2 = ["sentence-transformers>=2.2", "anthropic>=0.40", "rendercv[full]>=1.0"]
+# Phase 3 outreach. Contact lookup (Hunter/Apollo) needs no extra deps — it reuses the
+# core httpx client. Only the manual Gmail SEND path needs Google's libraries, and they
+# are lazy-imported: drafting (and the whole daily run) works without them.
+gmail = ["google-api-python-client>=2.0", "google-auth-oauthlib>=1.0"]
+phase3 = ["google-api-python-client>=2.0", "google-auth-oauthlib>=1.0"]
 
 [project.scripts]
 internship-pipeline = "internship_pipeline.run_daily:main"

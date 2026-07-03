@@ -1,0 +1,76 @@
+# master_resume.example.yaml — documented template for master_resume.yaml
+#
+# This tagged YAML is the SINGLE SOURCE OF TRUTH for résumé tailoring (Phase 2).
+# Every bullet is an object with `text`, `tags`, and `metrics`. The tailoring step
+# only ever selects / reorders / lightly rephrases these REAL bullets — it never
+# invents experience, metrics, employers, or skills.
+#
+# Copy this to master_resume.yaml and replace every value with your real content,
+# then set `placeholder: false`. Keep the shape; add/remove entries freely.
+
+placeholder: true            # set false once real content is in place
+
+# --- Identity (rendered verbatim into the résumé header; all real) ---
+name: Jane Placeholder
+email: jane.placeholder@example.com
+phone: "+1-555-0100"
+location: City, Country
+links:
+  linkedin: https://www.linkedin.com/in/example
+  github: https://github.com/example
+  website: https://example.com
+
+# One-line professional summary — REAL, factual. Kept short; rendered as-is.
+summary: >-
+  Computer science student focused on backend and distributed systems.
+
+# --- Education (rendered verbatim; all real) ---
+education:
+  - institution: Placeholder University
+    area: Computer Science
+    degree: BSc
+    location: City, Country
+    start_date: "2023-09"        # YYYY-MM (RenderCV date format)
+    end_date: "2027-05"
+    highlights:
+      - "GPA 3.9/4.0 — real, factual highlight only"
+
+# --- Experiences: each bullet is text + tags + metrics ---
+experiences:
+  - company: Placeholder Labs
+    role: Software Engineer Intern
+    location: Remote
+    start_date: "2025-05"
+    end_date: "2025-08"
+    bullets:
+      - text: "Built a data pipeline processing 2M events/day using Python and Kafka."
+        tags: [backend, data, python, kafka, distributed-systems]
+        metrics: true          # true if the bullet contains a concrete number
+      - text: "Wrote integration tests that cut a recurring flaky-test class to zero."
+        tags: [testing, python, reliability]
+        metrics: false
+
+  - company: Placeholder Startup
+    role: Backend Developer (Part-time)
+    location: City, Country
+    start_date: "2024-09"
+    end_date: "2025-04"
+    bullets:
+      - text: "Designed a REST API in Flask serving 50k requests/day."
+        tags: [backend, python, flask, api]
+        metrics: true
+
+# --- Projects (same bullet shape) ---
+projects:
+  - name: Placeholder Project
+    url: https://github.com/example/placeholder
+    bullets:
+      - text: "Implemented a SQL query planner in Java for a toy database."
+        tags: [java, databases, systems]
+        metrics: false
+
+# --- Skills (rendered as-is; only list skills you genuinely have) ---
+skills:
+  languages: [Python, Java, SQL]
+  frameworks: [Flask, React]
+  tools: [Git, Docker, PostgreSQL]

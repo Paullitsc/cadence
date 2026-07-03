@@ -20,13 +20,38 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Repo *variables* (Settings → Secrets and variables → Actions → Variables)
+      # --- Phase 0/1: core + sourcing ---
       STORAGE_BACKEND: ${{ vars.STORAGE_BACKEND || 'supabase' }}
       ENABLE_JSEARCH: ${{ vars.ENABLE_JSEARCH || 'false' }}
       LOG_LEVEL: INFO
+      # --- Phase 2: résumé matching / tailoring ---
+      ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL || 'claude-haiku-4-5' }}
+      ANTHROPIC_MAX_TOKENS: ${{ vars.ANTHROPIC_MAX_TOKENS || '2048' }}
+      FIT_SCORE_THRESHOLD: ${{ vars.FIT_SCORE_THRESHOLD || '0.30' }}
+      HIGH_PRIORITY_THRESHOLD: ${{ vars.HIGH_PRIORITY_THRESHOLD || '0.55' }}
+      TOP_K_BULLETS: ${{ vars.TOP_K_BULLETS || '8' }}
+      MAX_TAILORED_BULLETS: ${{ vars.MAX_TAILORED_BULLETS || '10' }}
+      TARGET_COMPANIES: ${{ vars.TARGET_COMPANIES || '' }}
+      # --- Phase 3: cold outreach (drafting only — sending is always manual) ---
+      ENABLE_HUNTER: ${{ vars.ENABLE_HUNTER || 'false' }}
+      ENABLE_APOLLO: ${{ vars.ENABLE_APOLLO || 'false' }}
+      OUTREACH_MAX_LOOKUPS_PER_RUN: ${{ vars.OUTREACH_MAX_LOOKUPS_PER_RUN || '5' }}
+      OUTREACH_PAID_LOOKUP_HIGH_PRIORITY_ONLY: ${{ vars.OUTREACH_PAID_LOOKUP_HIGH_PRIORITY_ONLY || 'true' }}
+      OUTREACH_FROM_NAME: ${{ vars.OUTREACH_FROM_NAME || '' }}
+      OUTREACH_FROM_EMAIL: ${{ vars.OUTREACH_FROM_EMAIL || '' }}
+      OUTREACH_OPT_OUT: ${{ vars.OUTREACH_OPT_OUT || '' }}
       # Repo *secrets* (same page → Secrets). Unset ones are empty strings.
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      HUNTER_API_KEY: ${{ secrets.HUNTER_API_KEY }}
+      APOLLO_API_KEY: ${{ secrets.APOLLO_API_KEY }}
+      # Real home address — technically only ends up in sent emails, but kept as a
+      # secret for defense-in-depth (masked from logs). Note: sending itself is
+      # ALWAYS a separate manual `approve-and-send` command; this only affects the
+      # footer baked into drafts created by this workflow.
+      OUTREACH_PHYSICAL_ADDRESS: ${{ secrets.OUTREACH_PHYSICAL_ADDRESS }}
     steps:
       - uses: actions/checkout@v4
 
@@ -36,7 +61,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --extra dev --extra phase2
 
       - name: Run daily pipeline
         run: uv run python -m internship_pipeline.run_daily
