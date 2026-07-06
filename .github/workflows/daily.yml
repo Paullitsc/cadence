@@ -83,16 +83,29 @@ jobs:
           GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
         run: printf '%s' "$GMAIL_TOKEN_JSON" > gmail_token.json
 
+      # Materialize the master résumé from a secret. It is PII and git-ignored, so the
+      # checkout never contains it — without this step every scheduled run silently
+      # skipped matching/tailoring/outreach ("master résumé not found"). The secret
+      # holds the full contents of master_resume.yaml.
+      - name: Write master résumé
+        env:
+          MASTER_RESUME_YAML: ${{ secrets.MASTER_RESUME_YAML }}
+        run: |
+          if [ -n "$MASTER_RESUME_YAML" ]; then
+            printf '%s' "$MASTER_RESUME_YAML" > master_resume.yaml
+            echo "master résumé materialized ($(wc -c < master_resume.yaml) bytes)"
+          else
+            echo "::warning title=No master résumé::MASTER_RESUME_YAML secret unset — tailoring will be skipped."
+          fi
+
       - name: Run daily pipeline
         run: uv run python -m internship_pipeline.run_daily
 
-      - name: Upload digest artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: digest
-          path: data/digests/
-          if-no-files-found: ignore
+      # NOTE: the digest used to be uploaded as a build artifact here. This repo is
+      # PUBLIC and artifacts are downloadable by anyone — once the pipeline prepares
+      # real applications/outreach the digest carries recruiter emails and
+      # résumé-derived content, so it must not be published. Delivery is the digest
+      # EMAIL (DIGEST_EMAIL_ENABLED); the runs table + logs remain the audit trail.
 
       # GitHub does NOT notify on scheduled-workflow failures — raise a real alert.
       # Chosen channel: email (Gmail). Best-effort: the alerts module never raises.
