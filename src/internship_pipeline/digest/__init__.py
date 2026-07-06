@@ -1,9 +1,10 @@
 """HTML/email daily digest (jinja2 + Gmail).
 
-Phase 1 rendered "new jobs today" to a local file. Phase 4 makes it the single morning
-touchpoint (top matches, outreach + applications awaiting review, possible replies) and,
-when enabled + credentialed, emails it to yourself. Sending to yourself is the only
-outbound action the daily run performs; outreach/submits are always manual.
+Phase 1 rendered "new jobs today" to a local file; Phase 4 emailed it. Phase 5 slims
+it to the OUTREACH channel: a compact count header + one link to the Google Sheet
+tracker (the application workspace), outreach drafts (with Gmail-draft links), and
+the possible-replies scan. Sending to yourself is still the only outbound action the
+daily run performs; outreach sends/submits are always manual.
 """
 
 from .email import send_digest_email

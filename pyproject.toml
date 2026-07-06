@@ -31,6 +31,11 @@ phase2 = ["sentence-transformers>=2.2", "anthropic>=0.40", "rendercv[full]>=1.0"
 # are lazy-imported: drafting (and the whole daily run) works without them.
 gmail = ["google-api-python-client>=2.0", "google-auth-oauthlib>=1.0"]
 phase3 = ["google-api-python-client>=2.0", "google-auth-oauthlib>=1.0"]
+# Phase 5 tracker: Google Sheets application workspace + Drive CV store. Same
+# libraries as gmail plus google-auth for service-account credentials; lazy-imported,
+# so the sync stage no-ops without them (zero-credential rule).
+tracker = ["google-api-python-client>=2.0", "google-auth>=2.0"]
+phase5 = ["google-api-python-client>=2.0", "google-auth>=2.0", "google-auth-oauthlib>=1.0"]
 
 [project.scripts]
 internship-pipeline = "internship_pipeline.run_daily:main"

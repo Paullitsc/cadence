@@ -33,6 +33,8 @@ from ..outreach import (
     draft_outreach_copy,
     find_contact,
 )
+from ..outreach.drafts import create_gmail_drafts
+from ..outreach.gmail import default_draft_fn
 from ..outreach.suppress import is_suppressed as suppression_check
 from ..resume import load_master_resume
 from ..resume.llm import build_default_complete
@@ -170,6 +172,22 @@ def run(ctx: StageContext) -> StageResult:
                     "suppressed": is_suppressed, "used_llm": content.used_llm,
                 },
             )
+
+        # Phase 5 (flag-gated): land eligible email drafts in Gmail's Drafts folder
+        # for the human to edit + send. DRAFTING, not sending — verified contacts
+        # only; everything else stays pending_review for the manual CLI path.
+        gmail_drafts_created = 0
+        if s.outreach_gmail_drafts_enabled and drafts:
+            draft_fn = default_draft_fn(s)
+            if draft_fn is None:
+                log.info(
+                    "OUTREACH_GMAIL_DRAFTS_ENABLED but Gmail not configured; skipping",
+                    extra={"run_id": ctx.run_id},
+                )
+            else:
+                gmail_drafts_created = create_gmail_drafts(
+                    drafts, settings=s, storage=storage, draft_fn=draft_fn
+                )
     finally:
         storage.close()
         if client is not None:
@@ -177,6 +195,7 @@ def run(ctx: StageContext) -> StageResult:
 
     ctx.data["outreach"] = drafts
     counts = {
+        "gmail_drafts_created": gmail_drafts_created,
         "outreach_drafted": len(drafts),
         "dual_trigger_roles": len(prepared),
         "email_drafts": len(prepared),

@@ -48,6 +48,16 @@ jobs:
       DIGEST_TO_EMAIL: ${{ vars.DIGEST_TO_EMAIL || '' }}
       REPLY_SCAN_DAYS: ${{ vars.REPLY_SCAN_DAYS || '14' }}
       ALERT_CHANNEL: ${{ vars.ALERT_CHANNEL || 'email' }}
+      # --- Phase 5: Google Sheets tracker + Drive CV store + Gmail outreach drafts ---
+      TRACKER_SHEETS_ENABLED: ${{ vars.TRACKER_SHEETS_ENABLED || 'false' }}
+      SHEETS_SPREADSHEET_ID: ${{ vars.SHEETS_SPREADSHEET_ID || '' }}
+      DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID || '' }}
+      CV_GROUP_SIMILARITY: ${{ vars.CV_GROUP_SIMILARITY || '0.9' }}
+      MAX_QUESTION_DRAFTS_PER_RUN: ${{ vars.MAX_QUESTION_DRAFTS_PER_RUN || '15' }}
+      OUTREACH_GMAIL_DRAFTS_ENABLED: ${{ vars.OUTREACH_GMAIL_DRAFTS_ENABLED || 'false' }}
+      # Service-account key. Written from a secret below (like the Gmail token); the
+      # tracker sync / Drive upload no-op safely if it's unset.
+      GOOGLE_SERVICE_ACCOUNT_JSON: google_service_account.json
       # Gmail authorized-user token (send + readonly). Written from a secret below; the
       # send path / reply scan degrade gracefully to no-ops if it's unset.
       GMAIL_OAUTH_TOKEN_JSON: gmail_token.json
@@ -72,8 +82,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        # gmail extra powers the digest email + the failure email alert (both optional).
-        run: uv sync --extra dev --extra phase2 --extra gmail
+        # gmail extra powers the digest email + the failure email alert; tracker extra
+        # powers the Google Sheets sync + Drive CV upload (all optional at runtime).
+        run: uv sync --extra dev --extra phase2 --extra gmail --extra tracker
 
       # Materialize the Gmail token from a secret (contents of the authorized-user JSON
       # minted locally via `python -m internship_pipeline.outreach.gmail_auth`). If the
@@ -82,6 +93,14 @@ jobs:
         env:
           GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
         run: printf '%s' "$GMAIL_TOKEN_JSON" > gmail_token.json
+
+      # Materialize the Google service-account key from a secret (contents of the JSON
+      # key file for the tracker SA — see ACTIONS_FOR_PAUL.md §7). If the secret is
+      # unset the file is empty and the tracker sync / Drive upload safely no-op.
+      - name: Write Google service-account key
+        env:
+          SA_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: printf '%s' "$SA_JSON" > google_service_account.json
 
       # Materialize the master résumé from a secret. It is PII and git-ignored, so the
       # checkout never contains it — without this step every scheduled run silently

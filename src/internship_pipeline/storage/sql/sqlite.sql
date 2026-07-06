@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS applications (
     keywords             TEXT,               -- JSON array
     tailored_resume_path TEXT,               -- rendered PDF path (nullable)
     tailored_resume_yaml TEXT,               -- RenderCV YAML (auditable)
+    cv_drive_link        TEXT,               -- Phase 5: durable Google Drive link to the PDF
     drafted_answers      TEXT,               -- JSON object: question -> answer
     human_review         INTEGER NOT NULL DEFAULT 0,
     status               TEXT NOT NULL DEFAULT 'pending_review',
@@ -68,11 +69,26 @@ CREATE TABLE IF NOT EXISTS outreach (
     used_llm             INTEGER NOT NULL DEFAULT 0,
     sent_at              TEXT,
     provider_message_id  TEXT,
+    gmail_draft_id       TEXT,               -- Phase 5: real Gmail draft (edit + send in Gmail)
+    gmail_draft_link     TEXT,
     created_at           TEXT NOT NULL,
     updated_at           TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_outreach_status ON outreach (status);
 CREATE INDEX IF NOT EXISTS idx_outreach_dedupe ON outreach (dedupe_key);
+
+-- Phase 5: cross-run CV cache. cache_key = hash(selected bullet ids + keyword set);
+-- a hit reuses the stored CV outright (no LLM tailoring call, no render, no upload).
+-- (SQLiteStore also applies ALTER TABLE migrations for the two columns above when it
+-- opens a database created before Phase 5.)
+CREATE TABLE IF NOT EXISTS cv_cache (
+    cache_key            TEXT PRIMARY KEY,
+    tailored_resume_yaml TEXT NOT NULL,
+    cv_drive_link        TEXT,
+    drive_file_id        TEXT,
+    pdf_path             TEXT,
+    created_at           TEXT NOT NULL
+);
 
 -- Phase 3: do-not-contact list, enforced before any send. An entry is a full email
 -- address or a bare domain (opt out an entire company).

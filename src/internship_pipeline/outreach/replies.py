@@ -107,3 +107,19 @@ def scan_replies(settings: Settings, *, service: Optional[Any] = None) -> list[R
     except Exception as exc:  # never let the reply scan break the digest
         log.warning("reply scan failed; skipping", extra={"error": repr(exc)})
         return []
+
+
+def correlate_replies(replies: list[Reply], sent_outreach: list) -> list:
+    """SENT outreach rows whose contact has since written back (Phase 5, pure).
+
+    Matches on the sender address — the one reliable handle the heuristic scan has.
+    The caller transitions the matched rows ``sent -> replied`` in storage so the
+    outreach lifecycle (drafted → gmail_draft_created → sent → replied) is tracked.
+    """
+    reply_senders = {(r.from_email or "").strip().lower() for r in replies}
+    reply_senders.discard("")
+    return [
+        o
+        for o in sent_outreach
+        if o.status == "sent" and (o.contact_email or "").strip().lower() in reply_senders
+    ]

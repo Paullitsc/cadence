@@ -8,54 +8,50 @@
     body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
            color: #1a1a1a; max-width: 820px; margin: 24px auto; padding: 0 16px; }
     h1 { font-size: 20px; margin-bottom: 2px; }
-    .meta { color: #666; font-size: 13px; margin-bottom: 20px; }
-    .count { font-weight: 700; }
+    .meta { color: #666; font-size: 13px; margin-bottom: 16px; }
     h2 { font-size: 15px; margin: 24px 0 6px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
     table { width: 100%; border-collapse: collapse; font-size: 14px; }
     td { padding: 4px 8px 4px 0; vertical-align: top; }
-    td.loc { color: #555; white-space: nowrap; }
-    td.src, td.meta2 { color: #888; font-size: 12px; white-space: nowrap; }
-    td.fit { font-variant-numeric: tabular-nums; color: #0a7d33; font-weight: 600; white-space: nowrap; }
+    td.meta2, .meta2 { color: #888; font-size: 12px; }
     a { color: #1155cc; text-decoration: none; }
     a:hover { text-decoration: underline; }
     .empty { color: #666; font-style: italic; }
     .pill { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 10px;
             background: #eef; color: #335; margin-left: 6px; }
     .warn { color: #a15c00; }
+    .ok { color: #0a7d33; }
     code { background: #f4f4f4; padding: 1px 4px; border-radius: 3px; font-size: 12px; }
     .hint { color: #666; font-size: 12px; margin: 2px 0 8px; }
+    .stats { font-size: 14px; margin: 12px 0; }
+    .stats b { font-variant-numeric: tabular-nums; }
+    .tracker { display: inline-block; margin: 6px 0 4px; padding: 8px 14px; border-radius: 6px;
+               background: #e8f0fe; font-weight: 600; }
     footer { margin-top: 28px; color: #999; font-size: 12px; }
   </style>
 </head>
 <body>
-  <h1>Internship digest — <span class="count">{{ generated_at.strftime('%Y-%m-%d') }}</span></h1>
-  <div class="meta">
-    {{ generated_at.strftime('%Y-%m-%d %H:%M UTC') }} ·
-    run <code>{{ run_id }}</code> ·
-    {{ count }} new · {{ top_applications | length }} prepared ·
-    {{ pending_outreach | length }} outreach to review ·
-    {{ replies | length }} possible replies
-  </div>
+  <h1>Internship digest — {{ generated_at.strftime('%Y-%m-%d') }}</h1>
+  <div class="meta">{{ generated_at.strftime('%Y-%m-%d %H:%M UTC') }} · run <code>{{ run_id }}</code></div>
 
-  {# --- Top matches by fit --- #}
-  {% if top_applications %}
-  <h2>Top matches by fit</h2>
-  <table>
-    {% for app in top_applications %}
-    <tr>
-      <td class="fit">{{ '%.2f' | format(app.fit_score) }}</td>
-      <td><a href="{{ app.url }}">{{ app.title }}</a> — {{ app.company_name }}
-        {% if app.human_review %}<span class="pill">review</span>{% endif %}
-      </td>
-    </tr>
-    {% endfor %}
-  </table>
+  {# --- Compact header: the counts; the SHEET is the application workspace. --- #}
+  <div class="stats">
+    <b>{{ counts.get('new', 0) }}</b> new jobs ·
+    <b>{{ counts.get('applications_prepared', 0) }}</b> applications prepared ·
+    <b>{{ counts.get('llm_calls_saved', 0) }}</b> LLM calls saved (CV grouping)
+  </div>
+  {% if sheet_url %}
+  <a class="tracker" href="{{ sheet_url }}">Open the application tracker (Google Sheet) →</a>
+  <p class="hint">Every prepared application is a row there: job link, tailored CV (Drive),
+    drafted answers, and your status/notes workflow. Submitting is always your click.</p>
+  {% else %}
+  <p class="hint">Tracker sheet not configured — applications live in storage
+    (see ACTIONS_FOR_PAUL.md to set up the Google Sheet).</p>
   {% endif %}
 
-  {# --- Outreach drafts awaiting approval --- #}
+  {# --- Outreach drafts awaiting approval — the inbox's real job. --- #}
   <h2>Outreach drafts awaiting your approval</h2>
   {% if pending_outreach %}
-  <p class="hint">Preview then send manually:
+  <p class="hint">Edit + send from Gmail where a draft link is shown, or use
     <code>python -m internship_pipeline.outreach.approve_and_send &lt;id&gt; --yes</code>.
     LinkedIn notes are draft-only — send those yourself.</p>
   <table>
@@ -64,10 +60,17 @@
       <td class="meta2">{{ o.channel }}</td>
       <td>{{ o.company_name }} — {{ o.title }}
         <span class="meta2">
-          → {{ o.contact_email or o.contact_name or 'no verified contact' }}
-          ({{ o.contact_source }}{% if not o.contact_verified %}, unverified{% endif %})
+          → {{ o.contact_name or o.contact_email or 'no verified contact' }}
+          {%- if o.contact_title %} ({{ o.contact_title }}){% endif %}
+          {%- if o.contact_name and o.contact_email %} · {{ o.contact_email }}{% endif %}
+          · {{ o.contact_source }}
+          {%- if o.contact_verified %} · <span class="ok">verified</span>
+          {%- else %} · <span class="warn">unverified</span>{% endif %}
         </span>
         {% if o.suppressed %}<span class="pill warn">suppressed</span>{% endif %}
+        {% if o.gmail_draft_link %}
+        <br><a href="{{ o.gmail_draft_link }}">✉ edit the draft in Gmail</a>
+        {% endif %}
         <br><code>{{ o.outreach_id }}</code>
       </td>
     </tr>
@@ -77,25 +80,7 @@
   <p class="empty">No outreach drafts awaiting approval.</p>
   {% endif %}
 
-  {# --- Applications prepared, awaiting submit --- #}
-  <h2>Applications prepared, awaiting your submit</h2>
-  {% if pending_applications %}
-  <p class="hint">Submit these yourself (Simplify Copilot autofill + your own click/submit).</p>
-  <table>
-    {% for app in pending_applications %}
-    <tr>
-      <td class="fit">{{ '%.2f' | format(app.fit_score) }}</td>
-      <td><a href="{{ app.url }}">{{ app.title }}</a> — {{ app.company_name }}
-        {% if app.tailored_resume_path %}<span class="meta2"> · résumé ready</span>{% endif %}
-      </td>
-    </tr>
-    {% endfor %}
-  </table>
-  {% else %}
-  <p class="empty">No applications awaiting submit.</p>
-  {% endif %}
-
-  {# --- Possible recruiter replies --- #}
+  {# --- Possible recruiter replies (kept as-is). --- #}
   {% if replies %}
   <h2>Possible replies to review</h2>
   <p class="hint">Heuristic scan of recent inbound mail — not all are recruiter replies.</p>
@@ -107,25 +92,6 @@
     </tr>
     {% endfor %}
   </table>
-  {% endif %}
-
-  {# --- New internships today --- #}
-  <h2>New internships today — {{ count }}</h2>
-  {% if count == 0 %}
-    <p class="empty">No new active roles since the last run.</p>
-  {% else %}
-    {% for company, jobs in by_company.items() %}
-    <h3 style="font-size:14px;margin:14px 0 4px;">{{ company }}</h3>
-    <table>
-      {% for job in jobs %}
-      <tr>
-        <td><a href="{{ job.url }}">{{ job.title }}</a></td>
-        <td class="loc">{{ job.locations | join(' · ') }}</td>
-        <td class="src">{{ job.source_feed.value if job.source_feed else (job.source or '') }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-    {% endfor %}
   {% endif %}
 
   <footer>

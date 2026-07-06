@@ -86,6 +86,23 @@ create table if not exists public.suppressions (
     created_at  timestamptz not null default now()
 );
 
+-- Phase 5: durable CV artifacts + Gmail outreach drafts. `add column if not exists`
+-- upgrades a database created in an earlier phase; the whole file stays idempotent.
+alter table public.applications add column if not exists cv_drive_link text;
+alter table public.outreach add column if not exists gmail_draft_id text;
+alter table public.outreach add column if not exists gmail_draft_link text;
+
+-- Phase 5: cross-run CV cache. cache_key = hash(selected bullet ids + keyword set);
+-- a hit reuses the stored CV outright (no LLM tailoring call, no render, no upload).
+create table if not exists public.cv_cache (
+    cache_key            text primary key,
+    tailored_resume_yaml text not null,
+    cv_drive_link        text,
+    drive_file_id        text,
+    pdf_path             text,
+    created_at           timestamptz not null default now()
+);
+
 -- This pipeline uses the service-role key (server-side, GitHub Actions secret),
 -- which bypasses Row Level Security. If you later expose these tables to the
 -- anon/public key, enable RLS and add explicit policies first.

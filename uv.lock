@@ -630,8 +630,17 @@ phase3 = [
     { name = "google-api-python-client" },
     { name = "google-auth-oauthlib" },
 ]
+phase5 = [
+    { name = "google-api-python-client" },
+    { name = "google-auth" },
+    { name = "google-auth-oauthlib" },
+]
 render = [
     { name = "rendercv", extra = ["full"] },
+]
+tracker = [
+    { name = "google-api-python-client" },
+    { name = "google-auth" },
 ]
 
 [package.metadata]
@@ -640,8 +649,13 @@ requires-dist = [
     { name = "anthropic", marker = "extra == 'phase2'", specifier = ">=0.40" },
     { name = "google-api-python-client", marker = "extra == 'gmail'", specifier = ">=2.0" },
     { name = "google-api-python-client", marker = "extra == 'phase3'", specifier = ">=2.0" },
+    { name = "google-api-python-client", marker = "extra == 'phase5'", specifier = ">=2.0" },
+    { name = "google-api-python-client", marker = "extra == 'tracker'", specifier = ">=2.0" },
+    { name = "google-auth", marker = "extra == 'phase5'", specifier = ">=2.0" },
+    { name = "google-auth", marker = "extra == 'tracker'", specifier = ">=2.0" },
     { name = "google-auth-oauthlib", marker = "extra == 'gmail'", specifier = ">=1.0" },
     { name = "google-auth-oauthlib", marker = "extra == 'phase3'", specifier = ">=1.0" },
+    { name = "google-auth-oauthlib", marker = "extra == 'phase5'", specifier = ">=1.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", specifier = ">=3.1" },
     { name = "pydantic", specifier = ">=2.7" },
@@ -655,7 +669,7 @@ requires-dist = [
     { name = "sentence-transformers", marker = "extra == 'phase2'", specifier = ">=2.2" },
     { name = "tenacity", specifier = ">=8.3" },
 ]
-provides-extras = ["dev", "ml", "llm", "render", "phase2", "gmail", "phase3"]
+provides-extras = ["dev", "ml", "llm", "render", "phase2", "gmail", "phase3", "tracker", "phase5"]
 
 [[package]]
 name = "jinja2"

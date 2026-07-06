@@ -17,7 +17,7 @@ from typing import Optional
 import httpx
 
 from ..logging_config import get_logger
-from ..models import Application, Job, Outreach, RunRecord
+from ..models import Application, CvCacheEntry, Job, Outreach, RunRecord
 from .base import Storage, UpsertResult, chunked, suppression_matches
 
 log = get_logger(__name__)
@@ -136,6 +136,7 @@ class SupabaseStore(Storage):
             "keywords": app.keywords,
             "tailored_resume_path": app.tailored_resume_path,
             "tailored_resume_yaml": app.tailored_resume_yaml,
+            "cv_drive_link": app.cv_drive_link,
             "drafted_answers": app.drafted_answers,
             "human_review": app.human_review,
             "status": app.status,
@@ -161,6 +162,7 @@ class SupabaseStore(Storage):
             keywords=row.get("keywords") or [],
             tailored_resume_path=row.get("tailored_resume_path"),
             tailored_resume_yaml=row.get("tailored_resume_yaml"),
+            cv_drive_link=row.get("cv_drive_link"),
             drafted_answers=row.get("drafted_answers") or {},
             human_review=bool(row.get("human_review")),
             status=row.get("status", "pending_review"),
@@ -209,6 +211,8 @@ class SupabaseStore(Storage):
             "used_llm": outreach.used_llm,
             "sent_at": outreach.sent_at,
             "provider_message_id": outreach.provider_message_id,
+            "gmail_draft_id": outreach.gmail_draft_id,
+            "gmail_draft_link": outreach.gmail_draft_link,
             "updated_at": now,
         }
         # created_at defaults on insert; on conflict we merge without overwriting it.
@@ -244,6 +248,8 @@ class SupabaseStore(Storage):
             used_llm=bool(row.get("used_llm")),
             sent_at=row.get("sent_at"),
             provider_message_id=row.get("provider_message_id"),
+            gmail_draft_id=row.get("gmail_draft_id"),
+            gmail_draft_link=row.get("gmail_draft_link"),
         )
 
     def get_outreach(self, outreach_id: str) -> Optional[Outreach]:
@@ -262,6 +268,41 @@ class SupabaseStore(Storage):
         resp = self.client.get(f"{self.base}/outreach", params=params)
         resp.raise_for_status()
         return [self._row_to_outreach(r) for r in resp.json()]
+
+    # --- Phase 5: cross-run CV cache ---
+
+    def get_cv_cache(self, cache_key: str) -> Optional[CvCacheEntry]:
+        resp = self.client.get(
+            f"{self.base}/cv_cache",
+            params={"select": "*", "cache_key": f"eq.{cache_key}", "limit": "1"},
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        if not rows:
+            return None
+        row = rows[0]
+        return CvCacheEntry(
+            cache_key=row["cache_key"],
+            tailored_resume_yaml=row.get("tailored_resume_yaml") or "",
+            cv_drive_link=row.get("cv_drive_link"),
+            drive_file_id=row.get("drive_file_id"),
+            pdf_path=row.get("pdf_path"),
+        )
+
+    def save_cv_cache(self, entry: CvCacheEntry) -> None:
+        resp = self.client.post(
+            f"{self.base}/cv_cache",
+            params={"on_conflict": "cache_key"},
+            headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
+            json={
+                "cache_key": entry.cache_key,
+                "tailored_resume_yaml": entry.tailored_resume_yaml,
+                "cv_drive_link": entry.cv_drive_link,
+                "drive_file_id": entry.drive_file_id,
+                "pdf_path": entry.pdf_path,
+            },
+        )
+        resp.raise_for_status()
 
     def add_suppression(self, entry: str, reason: Optional[str] = None) -> None:
         normalized = (entry or "").strip().lower()

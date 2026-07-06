@@ -142,6 +142,38 @@ class Settings(BaseSettings):
     alert_channel: Literal["email", "slack"] = "email"  # chosen: email (Gmail)
     slack_webhook_url: Optional[str] = None  # only used by the stubbed slack channel
 
+    # --- Phase 5: Google Sheets tracker + Drive CV store + outreach Gmail drafts ---
+    # The sheet is a PROJECTION of storage for the human; storage stays the source of
+    # truth. All of these are optional: with any of them missing the sync stage logs
+    # one line and no-ops, so the pipeline still runs end-to-end with zero credentials.
+    tracker_sheets_enabled: bool = False
+    # Service-account credentials: a path to the JSON key file OR the inline JSON
+    # itself (GitHub Actions materializes the secret to a file — see daily.yml).
+    google_service_account_json: Optional[str] = None
+    sheets_spreadsheet_id: Optional[str] = None  # the tracker spreadsheet (shared with the SA)
+    drive_folder_id: Optional[str] = None  # Drive folder for tailored-CV PDFs (shared with the SA)
+    # CV grouping: jobs whose JD embeddings are at least this similar (cosine) share
+    # ONE tailored CV — the cluster representative's. Zero extra cost: the vectors are
+    # already computed by match_and_slice. Keyword-set overlap is the sanity check so
+    # two superficially-similar JDs with different hard requirements don't collapse.
+    cv_group_similarity: float = 0.9
+    cv_group_keyword_overlap: float = 0.5  # min Jaccard overlap of extracted keyword sets
+    # Create real Gmail drafts for outreach (edit + send from Gmail). DRAFTING only —
+    # the human still hits send. Requires the gmail.compose scope on the OAuth token
+    # (re-mint via gmail_auth with this flag set — see ACTIONS_FOR_PAUL.md).
+    outreach_gmail_drafts_enabled: bool = False
+    gmail_compose_scope: str = "https://www.googleapis.com/auth/gmail.compose"
+    # Tailored-CV Drive uploads authenticate as the human (this scope on the Gmail OAuth
+    # token), not the service account: personal (non-Workspace) Google accounts give
+    # service accounts zero Drive storage quota, so a bare SA can create/own no files —
+    # only edit ones it doesn't own. Sheets is unaffected (editing an existing
+    # spreadsheet's cells needs no quota). `drive.file` (not the broader `drive` scope)
+    # is enough: it grants access to every file this app itself creates.
+    drive_file_scope: str = "https://www.googleapis.com/auth/drive.file"
+    # Cost cap on fetching + LLM-drafting real ATS form questions (per run). Question
+    # FETCHES are free public-API calls; the cap bounds the answer-drafting LLM spend.
+    max_question_drafts_per_run: int = 15
+
     # End-to-end dry-run: exercise every stage from bundled fixtures with zero live creds.
     dry_run: bool = False
     dry_run_jobs_file: Optional[str] = None  # None → bundled fixtures/dry_run_jobs.json
@@ -158,8 +190,18 @@ class Settings(BaseSettings):
 
     @property
     def gmail_scopes(self) -> list[str]:
-        """All Gmail scopes the app uses (send for outreach, readonly for reply scan)."""
-        return [self.gmail_send_scope, self.gmail_read_scope]
+        """All Gmail scopes the app uses (send for outreach, readonly for reply scan).
+
+        The compose scope (Gmail drafts for outreach, Phase 5) is included only when
+        that feature is enabled, so tokens minted before Phase 5 keep refreshing
+        cleanly — requesting a scope the stored token doesn't carry breaks the refresh.
+        """
+        scopes = [self.gmail_send_scope, self.gmail_read_scope]
+        if self.outreach_gmail_drafts_enabled:
+            scopes.append(self.gmail_compose_scope)
+        if self.tracker_sheets_enabled:
+            scopes.append(self.drive_file_scope)
+        return scopes
 
     @property
     def digest_recipient(self) -> Optional[str]:

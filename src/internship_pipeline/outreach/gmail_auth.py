@@ -42,15 +42,33 @@ def main() -> int:
         print("Install the 'gmail' extra first:  uv sync --extra gmail")
         return 1
 
-    # BOTH scopes: send (approve-and-send / digest email / alert) + readonly (reply scan).
+    # All scopes the app uses: send (approve-and-send / digest email / alert) +
+    # readonly (reply scan), plus compose (Phase 5 outreach Gmail drafts) when
+    # OUTREACH_GMAIL_DRAFTS_ENABLED is set, plus drive.file (Phase 5 tailored-CV
+    # upload — service accounts have no Drive storage quota on personal Google
+    # accounts, so uploads authenticate as you instead) when TRACKER_SHEETS_ENABLED
+    # is set — enable the flag(s) BEFORE minting so the token carries the scope.
     flow = InstalledAppFlow.from_client_secrets_file(creds_path, settings.gmail_scopes)
     creds = flow.run_local_server(port=0)  # opens the browser for consent
     Path(token_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
     Path(token_path).expanduser().write_text(creds.to_json(), encoding="utf-8")
+    scopes = "send + readonly"
+    scopes += " + compose" if settings.outreach_gmail_drafts_enabled else ""
+    scopes += " + drive.file" if settings.tracker_sheets_enabled else ""
     print(
-        f"Wrote Gmail token to {token_path} (scopes: send + readonly). "
+        f"Wrote Gmail token to {token_path} (scopes: {scopes}). "
         "approve-and-send, the digest email, and the reply scan can now use your account."
     )
+    if not settings.outreach_gmail_drafts_enabled:
+        print(
+            "Note: token minted WITHOUT the compose scope. To have outreach land as real "
+            "Gmail drafts, set OUTREACH_GMAIL_DRAFTS_ENABLED=true and re-run this command."
+        )
+    if not settings.tracker_sheets_enabled:
+        print(
+            "Note: token minted WITHOUT the drive.file scope. To have tailored CVs "
+            "upload to Drive, set TRACKER_SHEETS_ENABLED=true and re-run this command."
+        )
     return 0
 
 

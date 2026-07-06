@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..logging_config import get_logger
-from ..models import Application, Job, Outreach, RunRecord
+from ..models import Application, CvCacheEntry, Job, Outreach, RunRecord
 from .base import Storage, UpsertResult, chunked, suppression_matches
 
 log = get_logger(__name__)
@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS applications (
     keywords             TEXT,               -- JSON array
     tailored_resume_path TEXT,               -- rendered PDF path (nullable)
     tailored_resume_yaml TEXT,               -- RenderCV YAML (auditable)
+    cv_drive_link        TEXT,               -- Phase 5: durable Drive link to the PDF
     drafted_answers      TEXT,               -- JSON object: question -> answer
     human_review         INTEGER NOT NULL DEFAULT 0,
     status               TEXT NOT NULL DEFAULT 'pending_review',
@@ -84,6 +85,8 @@ CREATE TABLE IF NOT EXISTS outreach (
     used_llm             INTEGER NOT NULL DEFAULT 0,
     sent_at              TEXT,
     provider_message_id  TEXT,
+    gmail_draft_id       TEXT,               -- Phase 5: real Gmail draft (edit + send)
+    gmail_draft_link     TEXT,
     created_at           TEXT NOT NULL,
     updated_at           TEXT NOT NULL
 );
@@ -95,7 +98,26 @@ CREATE TABLE IF NOT EXISTS suppressions (
     reason      TEXT,
     created_at  TEXT NOT NULL
 );
+
+-- Phase 5: cross-run CV cache. cache_key = hash(selected bullet ids + keyword set);
+-- a hit reuses the stored CV outright (no LLM tailoring call, no render, no upload).
+CREATE TABLE IF NOT EXISTS cv_cache (
+    cache_key            TEXT PRIMARY KEY,
+    tailored_resume_yaml TEXT NOT NULL,
+    cv_drive_link        TEXT,
+    drive_file_id        TEXT,
+    pdf_path             TEXT,
+    created_at           TEXT NOT NULL
+);
 """
+
+# Columns added after a table first shipped: applied with ALTER TABLE on startup so
+# existing local databases pick them up (CREATE TABLE IF NOT EXISTS won't).
+_MIGRATIONS: list[tuple[str, str, str]] = [
+    ("applications", "cv_drive_link", "TEXT"),
+    ("outreach", "gmail_draft_id", "TEXT"),
+    ("outreach", "gmail_draft_link", "TEXT"),
+]
 
 
 def _now() -> str:
@@ -108,6 +130,10 @@ class SQLiteStore(Storage):
         Path(path).expanduser().parent.mkdir(parents=True, exist_ok=True)
         with self._conn() as conn:
             conn.executescript(SCHEMA)
+            for table, column, col_type in _MIGRATIONS:
+                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+                if column not in cols:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
 
     def _conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
@@ -193,8 +219,8 @@ class SQLiteStore(Storage):
             conn.execute(
                 "INSERT OR REPLACE INTO applications (dedupe_key, company_name, title, url, "
                 "fit_score, keywords, tailored_resume_path, tailored_resume_yaml, "
-                "drafted_answers, human_review, status, created_at, updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "cv_drive_link, drafted_answers, human_review, status, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     app.dedupe_key,
                     app.company_name,
@@ -204,6 +230,7 @@ class SQLiteStore(Storage):
                     json.dumps(app.keywords),
                     app.tailored_resume_path,
                     app.tailored_resume_yaml,
+                    app.cv_drive_link,
                     json.dumps(app.drafted_answers),
                     int(app.human_review),
                     app.status,
@@ -223,6 +250,7 @@ class SQLiteStore(Storage):
             keywords=json.loads(row["keywords"] or "[]"),
             tailored_resume_path=row["tailored_resume_path"],
             tailored_resume_yaml=row["tailored_resume_yaml"],
+            cv_drive_link=row["cv_drive_link"],
             drafted_answers=json.loads(row["drafted_answers"] or "{}"),
             human_review=bool(row["human_review"]),
             status=row["status"],
@@ -260,8 +288,9 @@ class SQLiteStore(Storage):
                 "INSERT OR REPLACE INTO outreach (outreach_id, dedupe_key, company_name, title, "
                 "url, channel, contact_name, contact_email, contact_title, contact_source, "
                 "contact_confidence, contact_verified, contact_note, subject, body, status, "
-                "suppressed, human_review, used_llm, sent_at, provider_message_id, created_at, "
-                "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "suppressed, human_review, used_llm, sent_at, provider_message_id, "
+                "gmail_draft_id, gmail_draft_link, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     outreach.outreach_id,
                     outreach.dedupe_key,
@@ -284,6 +313,8 @@ class SQLiteStore(Storage):
                     int(outreach.used_llm),
                     outreach.sent_at,
                     outreach.provider_message_id,
+                    outreach.gmail_draft_id,
+                    outreach.gmail_draft_link,
                     created,
                     now,
                 ),
@@ -313,6 +344,8 @@ class SQLiteStore(Storage):
             used_llm=bool(row["used_llm"]),
             sent_at=row["sent_at"],
             provider_message_id=row["provider_message_id"],
+            gmail_draft_id=row["gmail_draft_id"],
+            gmail_draft_link=row["gmail_draft_link"],
         )
 
     def get_outreach(self, outreach_id: str) -> Optional[Outreach]:
@@ -333,6 +366,38 @@ class SQLiteStore(Storage):
                     "SELECT * FROM outreach WHERE status=? ORDER BY created_at DESC", (status,)
                 ).fetchall()
         return [self._row_to_outreach(r) for r in rows]
+
+    # --- Phase 5: cross-run CV cache ---
+
+    def get_cv_cache(self, cache_key: str) -> Optional[CvCacheEntry]:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM cv_cache WHERE cache_key=?", (cache_key,)
+            ).fetchone()
+        if row is None:
+            return None
+        return CvCacheEntry(
+            cache_key=row["cache_key"],
+            tailored_resume_yaml=row["tailored_resume_yaml"],
+            cv_drive_link=row["cv_drive_link"],
+            drive_file_id=row["drive_file_id"],
+            pdf_path=row["pdf_path"],
+        )
+
+    def save_cv_cache(self, entry: CvCacheEntry) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO cv_cache (cache_key, tailored_resume_yaml, "
+                "cv_drive_link, drive_file_id, pdf_path, created_at) VALUES (?,?,?,?,?,?)",
+                (
+                    entry.cache_key,
+                    entry.tailored_resume_yaml,
+                    entry.cv_drive_link,
+                    entry.drive_file_id,
+                    entry.pdf_path,
+                    _now(),
+                ),
+            )
 
     def add_suppression(self, entry: str, reason: Optional[str] = None) -> None:
         normalized = (entry or "").strip().lower()

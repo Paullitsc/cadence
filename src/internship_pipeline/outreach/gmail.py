@@ -47,26 +47,23 @@ def build_raw_message(sender: str, to: str, subject: str, body: str, html: Optio
     return base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")
 
 
-def build_service(settings: Settings, scopes: Optional[list[str]] = None):  # -> resource | None
-    """Build an authenticated Gmail service, or None if not configured/available.
+def load_user_credentials(settings: Settings, scopes: Optional[list[str]] = None):  # -> Credentials | None
+    """Load (and refresh) the authorized-user OAuth credentials, or None if unavailable.
 
-    Reads the authorized-user token JSON at ``GMAIL_OAUTH_TOKEN_JSON`` (minted once via
-    ``gmail_auth`` with both send + readonly scopes). Returns None — so every caller
-    degrades gracefully instead of crashing — when the token path is unset, the file is
-    missing/empty, the Google libraries aren't installed, or the credentials won't load.
+    Shared by Gmail (send/readonly/compose) and, since service accounts have no Drive
+    storage quota on personal Google accounts, the Phase 5 Drive upload — both read the
+    same token minted via ``gmail_auth``. Degrades to None on any failure so callers
+    no-op instead of crashing.
     """
     token_path = settings.gmail_oauth_token_json
     if not token_path:
-        log.info("GMAIL_OAUTH_TOKEN_JSON unset; Gmail is not configured")
         return None
     p = Path(token_path).expanduser()
     if not p.exists() or not p.read_text(encoding="utf-8").strip():
-        log.info("Gmail token file missing or empty; Gmail is not configured", extra={"path": token_path})
         return None
     try:
         from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
     except ImportError:
         log.warning("google api libraries not installed; install the 'gmail' extra")
         return None
@@ -76,7 +73,27 @@ def build_service(settings: Settings, scopes: Optional[list[str]] = None):  # ->
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
     except Exception as exc:  # malformed/expired-unrefreshable token → not configured
-        log.warning("could not load Gmail credentials; Gmail disabled", extra={"error": repr(exc)})
+        log.warning("could not load Google OAuth credentials", extra={"error": repr(exc)})
+        return None
+    return creds
+
+
+def build_service(settings: Settings, scopes: Optional[list[str]] = None):  # -> resource | None
+    """Build an authenticated Gmail service, or None if not configured/available.
+
+    Reads the authorized-user token JSON at ``GMAIL_OAUTH_TOKEN_JSON`` (minted once via
+    ``gmail_auth`` with both send + readonly scopes). Returns None — so every caller
+    degrades gracefully instead of crashing — when the token path is unset, the file is
+    missing/empty, the Google libraries aren't installed, or the credentials won't load.
+    """
+    creds = load_user_credentials(settings, scopes)
+    if creds is None:
+        log.info("Gmail token file missing/empty or unset; Gmail is not configured")
+        return None
+    try:
+        from googleapiclient.discovery import build
+    except ImportError:
+        log.warning("google api libraries not installed; install the 'gmail' extra")
         return None
     return build("gmail", "v1", credentials=creds, cache_discovery=False)
 
@@ -101,3 +118,47 @@ def default_send_fn(settings: Settings) -> Optional[SendFn]:
     """Build the live ``SendFn`` from settings, or None if Gmail isn't configured."""
     service = build_service(settings)
     return None if service is None else make_send_fn(service)
+
+
+# --- Phase 5: Gmail DRAFTS for outreach (drafting, not sending) -------------------
+# (sender, to, subject, body) -> (draft id, draft message id)
+DraftFn = Callable[[str, str, str, str], tuple[str, str]]
+
+
+def create_draft(service, sender: str, to: str, subject: str, body: str) -> tuple[str, str]:
+    """Create one Gmail draft; returns (draft id, draft message id).
+
+    Requires the ``gmail.compose`` scope on the token (re-mint via ``gmail_auth``
+    with OUTREACH_GMAIL_DRAFTS_ENABLED=true — see ACTIONS_FOR_PAUL.md). This never
+    sends anything: the draft sits in Gmail for the human to edit and send.
+    """
+    raw = build_raw_message(sender, to, subject, body)
+    draft = (
+        service.users().drafts()
+        .create(userId="me", body={"message": {"raw": raw}})
+        .execute()
+    )
+    return draft.get("id", ""), (draft.get("message") or {}).get("id", "")
+
+
+def draft_web_link(message_id: str) -> str:
+    """Best-effort URL that opens the draft in the Gmail web UI.
+
+    # VERIFY: the ``#drafts?compose=<message id>`` fragment is the commonly-working
+    # deep link but is not a documented API contract; if it stops resolving, the
+    # link still lands on the Drafts folder — nothing breaks.
+    """
+    base = "https://mail.google.com/mail/u/0/#drafts"
+    return f"{base}?compose={message_id}" if message_id else base
+
+
+def default_draft_fn(settings: Settings) -> Optional[DraftFn]:
+    """Build the live ``DraftFn`` from settings, or None if Gmail isn't configured."""
+    service = build_service(settings)
+    if service is None:
+        return None
+
+    def _draft(sender: str, to: str, subject: str, body: str) -> tuple[str, str]:
+        return create_draft(service, sender, to, subject, body)
+
+    return _draft

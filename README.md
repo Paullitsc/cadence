@@ -7,12 +7,13 @@ validated facts (API endpoints, costs, legal guardrails) live in
 [`Automated Intern Recruitment Workflow.md`](./Automated%20Intern%20Recruitment%20Workflow.md)
 — that blueprint is the single source of truth.
 
-> **Status: Phase 4 — complete. All five stages are wired end-to-end.** The daily run
-> sources roles → scores + tailors a résumé per role → drafts outreach for the roles
-> worth it (dual-trigger) → drafts application answers → emails you one morning digest.
-> A **dual-trigger** (high-fit **and** favorable) enqueues *both* a prepared application
-> and a drafted outreach message; everything stays `pending_review`. Runs end-to-end with
-> **zero credentials** (deterministic fallbacks) — try `--dry-run` below.
+> **Status: Phase 5 — complete. All six stages are wired end-to-end.** The daily run
+> sources roles → scores + tailors a résumé per role (one CV per cluster of similar
+> roles) → drafts outreach for the roles worth it (dual-trigger) → drafts application
+> answers (the job's REAL form questions where Greenhouse exposes them) → syncs the
+> **Google Sheets tracker** (rows with durable Drive CV links) → emails you a slim,
+> outreach-focused digest. Everything stays `pending_review`. Runs end-to-end with
+> **zero credentials** (deterministic fallbacks + no-op integrations) — try `--dry-run` below.
 
 ## Phased roadmap
 
@@ -23,6 +24,7 @@ validated facts (API endpoints, costs, legal guardrails) live in
 | 2 | Résumé slicing + application drafting (embeddings, Haiku tailoring, RenderCV) | ✅ done |
 | 3 | Outreach drafting (contact lookup, grounded copy, human-gated send) | ✅ done |
 | 4 | Orchestration: dual-trigger, digest email + reply scan, alerts, keep-alive, dry-run | ✅ done |
+| 5 | Google Sheets tracker + Drive CV store, CV grouping/cache, real ATS questions, Gmail outreach drafts, slim digest | ✅ done |
 
 ## Project layout
 
@@ -44,14 +46,18 @@ validated facts (API endpoints, costs, legal guardrails) live in
 │   ├── run_daily.py             # orchestrator entrypoint (--dry-run, --stage)
 │   ├── triggers.py              # Phase 4 dual-trigger (favorable + high-fit)
 │   ├── alerts.py                # Phase 4 failure alert (email impl, slack stub)
-│   ├── sourcing/                # companies loader, http, ATS/Simplify/JSearch fetchers
-│   ├── resume/                  # embeddings, matching, tailoring, RenderCV, answers
-│   ├── outreach/                # contacts, copy, footer, suppress, gmail, replies, send
+│   ├── sourcing/                # companies loader, http, ATS/Simplify/JSearch fetchers,
+│   │                            #   real Greenhouse form questions (Phase 5)
+│   ├── resume/                  # embeddings, matching, tailoring, RenderCV, answers,
+│   │                            #   CV grouping + cache keys (Phase 5)
+│   ├── outreach/                # contacts, copy, footer, suppress, gmail, replies, send,
+│   │                            #   Gmail outreach drafts (Phase 5)
+│   ├── tracker/                 # Phase 5: Google Sheets tracker + Drive CV store + backfill
 │   ├── storage/                 # SQLite + Supabase backends + SQL migrations
 │   ├── digest/                  # jinja2 HTML digest (render + write + email)
 │   ├── fixtures/                # bundled dry-run jobs + résumé (no creds needed)
 │   └── stages/                  # source → match_and_slice → draft_outreach
-│       └── ...                  #        → prepare_applications → log_and_digest
+│       └── ...                  #   → prepare_applications → sync_tracker → log_and_digest
 └── tests/                       # unit tests + fixtures (no live APIs in tests)
 ```
 
@@ -62,8 +68,7 @@ plus the SimplifyJobs `listings.json` (and optionally JSearch), normalizes every
 posting into one `Job`, dedupes by a stable hash of the URL, and upserts into the
 `jobs` table. New rows (not previously stored) are the day's deltas. `log_and_digest()`
 renders them to `data/digests/digest-YYYYMMDD.html` (+ `latest.html`). **No email is
-sent in Phase 1** — the file *is* the digest (and the GitHub Actions run uploads it
-as an artifact).
+sent in Phase 1** — the file *is* the digest.
 
 **ATS feed endpoints** (exactly the blueprint's — confirmed against live feeds):
 
@@ -169,11 +174,13 @@ source → match_and_slice → draft_outreach → prepare_applications → log_a
   also get outreach — keeping scarce/paid contact lookups aimed where they're worth it.
   (The recency test is an honest stand-in for "deadline soon": the free feeds don't expose
   a hard application deadline, so a freshly-posted role is the "act now" signal.)
-- **Morning digest** (`log_and_digest`). One HTML file (`data/digests/latest.html`) — new
-  jobs, top-N by fit, outreach awaiting approval, applications awaiting submit, and a
-  best-effort Gmail **reply scan** ("possible recruiter replies"). With `DIGEST_EMAIL_ENABLED`
+- **Morning digest** (`log_and_digest`). One HTML file (`data/digests/latest.html`) —
+  since Phase 5 it is deliberately SLIM: a count header (new jobs, applications prepared,
+  LLM calls saved) + one link to the Google Sheet tracker, the outreach drafts (with
+  Gmail-draft links), and a best-effort Gmail **reply scan**. With `DIGEST_EMAIL_ENABLED`
   + Gmail configured it's **emailed to yourself** — the one outbound action the daily run
-  performs (sending outreach / submitting applications is always you).
+  performs (sending outreach / submitting applications is always you). Replies from
+  contacts you actually emailed transition those outreach rows `sent → replied`.
 - **Observability + alerts.** Structured JSON logs, a persisted `runs` row, retry-with-backoff
   on every external call (`tenacity`), and a real `if: failure()` step that emails you via
   Gmail (`alerts.py`; Slack is a documented stub — set `ALERT_CHANNEL=slack` to switch).
@@ -184,6 +191,50 @@ source → match_and_slice → draft_outreach → prepare_applications → log_a
   checkpoint *is* the DB row plus your CLI action. Wrapping that in LangGraph `interrupt()`
   would add a heavyweight dependency and a second orchestration model for no behavioral gain,
   so per the assignment's "don't over-engineer" guidance it was skipped.
+
+## Phase 5: the Google Sheet is the application workspace; the inbox is for outreach
+
+The two human touchpoints are split by what they're *for*:
+
+- **Google Sheet = the application workspace** (`sync_tracker` stage, `tracker/`).
+  Every prepared application is a row on the **Applications** tab: clickable job link,
+  prepared date, company, locations, a **Status dropdown**
+  (`prepared → submitted → interviewing → offer → rejected → withdrawn` — the pipeline
+  only ever writes `prepared`; every transition after that is yours), a **Notes** column
+  the pipeline never touches, the **CV** link (durable, in Google Drive), a link to the
+  drafted **Answers** tab, fit score, and JD keywords. Upsert is idempotent by a hidden
+  dedupe-key column, and after the initial insert the pipeline only fills cells that are
+  still blank — your edits always win. Storage (Supabase/SQLite) stays the source of
+  truth; the sheet is a projection.
+- **Durable CVs in Drive** (`tracker/drive.py`). Tailored PDFs used to die with the
+  ephemeral CI runner (artifacts can't be published — public repo, PII). Now each
+  rendered PDF is uploaded to a shared Drive folder and the `webViewLink` is stored on
+  the application (`cv_drive_link`) and shown in the sheet. Recover everything older
+  runs already prepared with the one-off backfill (re-renders from stored YAML — free,
+  no LLM): `python -m internship_pipeline.tracker.backfill`.
+- **CV grouping + cache — the LLM cost saver** (`resume/grouping.py`). Before
+  tailoring, the capped job list is clustered on the JD embeddings already computed for
+  scoring (cosine ≥ `CV_GROUP_SIMILARITY`, keyword-overlap sanity check). One cluster =
+  one tailoring call + one render + one upload; other members' CV cells read
+  `same as row N`. A persistent `cv_cache` table (keyed by selected-bullet ids +
+  keyword set) reuses CVs across runs too. The digest header reports LLM calls saved.
+- **Real ATS form questions** (`sourcing/questions.py`). Where Greenhouse exposes a
+  job's actual application form (`.../jobs/{id}?questions=true` — response shape
+  verified against a live board), `prepare_applications` drafts answers to those
+  free-text questions instead of the standard set (selects like work authorization are
+  never drafted — they're yours). Lever/Ashby's public APIs expose no form fields
+  (checked), so they fall back to the standard questions. Drafted answers land on the
+  **Answers** tab (question, drafted answer, and an *edited-answer column that's yours*).
+- **Outreach lands as real Gmail drafts** (`outreach/drafts.py`, flag-gated by
+  `OUTREACH_GMAIL_DRAFTS_ENABLED`). Eligible drafts (verified contact, not suppressed)
+  are created via the Gmail API `drafts.create` — you open Gmail, edit, and hit send.
+  This is *drafting*, not sending: the human gate is intact, `approve_and_send` still
+  works, and rows transition `pending_review → gmail_draft_created → sent → replied`.
+  Requires the `gmail.compose` scope (re-mint the token — see `ACTIONS_FOR_PAUL.md`).
+
+Zero-credential rule still holds: with no service account / spreadsheet configured the
+tracker stage logs one line and no-ops, Drive upload is skipped, and the digest keeps
+working from the local file.
 
 ## Setup
 
@@ -215,6 +266,10 @@ uv run python -m internship_pipeline.outreach.approve_and_send <outreach_id>    
 uv run python -m internship_pipeline.outreach.approve_and_send <outreach_id> --yes  # send
 uv run python -m internship_pipeline.outreach.suppress add someone@company.com      # block
 uv run python -m internship_pipeline.outreach.gmail_auth                            # one-time OAuth
+
+# One-off recovery (Phase 5): re-render lost CV PDFs from stored YAML → Drive + sheet
+uv run python -m internship_pipeline.tracker.backfill --dry-run                     # report
+uv run python -m internship_pipeline.tracker.backfill                               # do it
 ```
 
 The daily run always writes `data/digests/latest.html` (open it). With the SQLite backend
@@ -248,14 +303,19 @@ vars. Full manual walkthrough: [`ACTIONS_FOR_PAUL.md`](./ACTIONS_FOR_PAUL.md).
 | `DIGEST_EMAIL_ENABLED`, `DIGEST_TO_EMAIL`, `DIGEST_TOP_N` | 4 | email the morning digest to yourself |
 | `ALERT_CHANNEL` (`email`\|`slack`), `SLACK_WEBHOOK_URL` | 4 | failure alert channel (email implemented; slack stub) |
 | `REPLY_SCAN_DAYS`, `REPLY_SCAN_QUERY` | 4 | recruiter-reply Gmail scan window/terms |
+| `TRACKER_SHEETS_ENABLED`, `GOOGLE_SERVICE_ACCOUNT_JSON` (secret), `SHEETS_SPREADSHEET_ID`, `DRIVE_FOLDER_ID` | 5 | Google Sheets tracker + Drive CV store; unset ⇒ sync stage no-ops |
+| `CV_GROUP_SIMILARITY`, `CV_GROUP_KEYWORD_OVERLAP` | 5 | CV grouping thresholds (one tailored CV per cluster of similar JDs) |
+| `MAX_QUESTION_DRAFTS_PER_RUN` | 5 | cap on answer-drafting LLM calls per run (question fetches are free) |
+| `OUTREACH_GMAIL_DRAFTS_ENABLED` | 5 | land outreach as real Gmail drafts (needs the `gmail.compose` scope — re-mint the token) |
 
 ## Scheduling (GitHub Actions)
 
 - **`daily.yml`** — the production cron, `0 13 * * *` (13:00 UTC ≈ early US morning). Reads
-  the vars/secrets above, runs the pipeline, uploads the digest artifact, emails the digest
+  the vars/secrets above, runs the pipeline, syncs the tracker sheet, emails the digest
   to you (if enabled), and on failure emails a real alert (`if: failure()` → `alerts.py`,
   since GitHub doesn't notify on scheduled-workflow failures). Manually triggerable via
-  **workflow_dispatch**.
+  **workflow_dispatch**. No digest artifact is uploaded — the repo is public and the
+  digest carries PII; Drive + the sheet are the durable outputs.
 - **`keepalive.yml`** — weekly no-op commit so the schedule isn't auto-disabled (below).
 - **`ci.yml`** — lint + tests + a `--dry-run` smoke on every push/PR.
 

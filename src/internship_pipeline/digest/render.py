@@ -1,9 +1,11 @@
 """Render + write the daily digest.
 
-Phase 1 rendered just "new jobs". Phase 4 turns it into the single morning touchpoint:
-new jobs, top matches by fit, outreach drafts awaiting approval, applications prepared
-awaiting submit, and possible recruiter replies. All new sections are optional, so the
-Phase-1 call site (and its tests) keep working unchanged.
+Phase 1 rendered "new jobs"; Phase 4 added every pending queue. Phase 5 splits the
+two human touchpoints by what they're FOR: the Google Sheet is the application
+workspace (per-application rows, CV links, drafted answers, status/notes), so the
+digest slims down to what genuinely belongs in an inbox — a compact count header
+with one link to the sheet, the outreach drafts (with Gmail-draft links), and the
+possible-replies scan. The digest file is still written locally every run.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from typing import TYPE_CHECKING, Optional
 
 from jinja2 import Environment, FileSystemLoader
 
-from ..models import Application, Job, Outreach
+from ..models import Job, Outreach
 
 if TYPE_CHECKING:  # avoid importing the Gmail path just for a type hint
     from ..outreach.replies import Reply
@@ -39,25 +41,19 @@ def _digest_context(
     run_id: str,
     generated_at: Optional[datetime],
     counts: Optional[dict[str, int]],
-    top_applications: Optional[list[Application]],
     pending_outreach: Optional[list[Outreach]],
-    pending_applications: Optional[list[Application]],
     replies: "Optional[list[Reply]]",
+    sheet_url: Optional[str],
 ) -> dict:
-    generated_at = generated_at or datetime.now(timezone.utc)
-    by_company: dict[str, list[Job]] = {}
-    for job in sorted(jobs, key=lambda j: (j.company_name.lower(), j.title.lower())):
-        by_company.setdefault(job.company_name, []).append(job)
+    counts = dict(counts or {})
+    counts.setdefault("new", len(jobs))
     return {
         "run_id": run_id,
-        "generated_at": generated_at,
-        "count": len(jobs),
-        "counts": counts or {},
-        "by_company": by_company,
-        "top_applications": top_applications or [],
+        "generated_at": generated_at or datetime.now(timezone.utc),
+        "counts": counts,
         "pending_outreach": pending_outreach or [],
-        "pending_applications": pending_applications or [],
         "replies": replies or [],
+        "sheet_url": sheet_url,
     }
 
 
@@ -67,16 +63,14 @@ def render_digest(
     run_id: str,
     generated_at: Optional[datetime] = None,
     counts: Optional[dict[str, int]] = None,
-    top_applications: Optional[list[Application]] = None,
     pending_outreach: Optional[list[Outreach]] = None,
-    pending_applications: Optional[list[Application]] = None,
     replies: "Optional[list[Reply]]" = None,
+    sheet_url: Optional[str] = None,
 ) -> str:
     """Render the digest HTML."""
     ctx = _digest_context(
         jobs=jobs, run_id=run_id, generated_at=generated_at, counts=counts,
-        top_applications=top_applications, pending_outreach=pending_outreach,
-        pending_applications=pending_applications, replies=replies,
+        pending_outreach=pending_outreach, replies=replies, sheet_url=sheet_url,
     )
     return _env().get_template("digest.html.j2").render(**ctx)
 
@@ -86,21 +80,26 @@ def render_digest_text(
     jobs: list[Job],
     run_id: str,
     counts: Optional[dict[str, int]] = None,
-    top_applications: Optional[list[Application]] = None,
     pending_outreach: Optional[list[Outreach]] = None,
-    pending_applications: Optional[list[Application]] = None,
     replies: "Optional[list[Reply]]" = None,
+    sheet_url: Optional[str] = None,
 ) -> str:
     """A short plain-text summary (the alternative part of the digest email)."""
+    counts = dict(counts or {})
+    counts.setdefault("new", len(jobs))
     lines = [
         f"Internship digest — run {run_id}",
-        f"New internships today: {len(jobs)}",
-        f"Top matches prepared: {len(top_applications or [])}",
+        f"New jobs: {counts.get('new', 0)}",
+        f"Applications prepared: {counts.get('applications_prepared', 0)}",
+        f"LLM calls saved (CV grouping): {counts.get('llm_calls_saved', 0)}",
         f"Outreach drafts awaiting approval: {len(pending_outreach or [])}",
-        f"Applications awaiting submit: {len(pending_applications or [])}",
         f"Possible replies to review: {len(replies or [])}",
+    ]
+    if sheet_url:
+        lines.append(f"Application tracker: {sheet_url}")
+    lines += [
         "",
-        "Open the HTML digest for details. Sending/submitting is always done by you.",
+        "Applications live in the tracker sheet. Sending/submitting is always done by you.",
     ]
     return "\n".join(lines)
 

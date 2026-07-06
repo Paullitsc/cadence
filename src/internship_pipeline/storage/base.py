@@ -12,7 +12,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ..models import Application, Job, Outreach, RunRecord
+from ..models import Application, CvCacheEntry, Job, Outreach, RunRecord
 
 
 @dataclass
@@ -85,6 +85,16 @@ class Storage(ABC):
     @abstractmethod
     def list_suppressions(self) -> list[str]:
         """Return all suppression entries (emails and/or domains), lowercased."""
+
+    # --- Phase 5: cross-run CV cache (reuse a tailored CV, skip the LLM call) ---
+
+    @abstractmethod
+    def get_cv_cache(self, cache_key: str) -> Optional[CvCacheEntry]:
+        """Load a cached tailored CV by its input-identity key, or None."""
+
+    @abstractmethod
+    def save_cv_cache(self, entry: CvCacheEntry) -> None:
+        """Upsert a ``cv_cache`` row (keyed by ``cache_key``)."""
 
     def close(self) -> None:  # optional; overridden where a client is held open
         pass

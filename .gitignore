@@ -16,6 +16,9 @@ dist/
 # Gmail OAuth (Phase 3): client-secrets + minted token — never commit these
 data/*token*.json
 data/*credentials*.json
+# Google service-account key (Phase 5 tracker) — never commit it
+*service_account*.json
+cadence-*.json
 
 # Data / runtime artifacts
 data/*.db

@@ -8,7 +8,7 @@ candidate's own skills/tags — cheap and reproducible, as the assignment asks.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..models import Job
 from .embeddings import Embedder, cosine
@@ -108,6 +108,9 @@ class MatchResult:
     fit_score: float  # job-to-profile fit in [0, 1] (mean of the top-K bullet sims)
     top_bullets: list[BulletRef]  # most relevant bullets, best first
     keywords: list[str]
+    # The JD embedding computed for scoring, kept so Phase-5 CV grouping can cluster
+    # similar jobs without re-embedding anything (zero extra cost).
+    jd_vector: list[float] = field(default_factory=list)
 
 
 def score_job(
@@ -126,7 +129,7 @@ def score_job(
     bullets, clamped to [0, 1]; ``top_bullets`` are those bullets, best first.
     """
     if not bullets:
-        return MatchResult(fit_score=0.0, top_bullets=[], keywords=[])
+        return MatchResult(fit_score=0.0, top_bullets=[], keywords=[], jd_vector=[])
 
     jd_vec = embedder.embed_one(job_text(job))
     sims = [(cosine(jd_vec, bv), ref) for bv, ref in zip(bullet_vectors, bullets)]
@@ -137,4 +140,6 @@ def score_job(
     mean_sim = sum(s for s, _ in top) / len(top)
     fit = max(0.0, min(1.0, mean_sim))
     keywords = extract_keywords(job_text(job), resume=resume)
-    return MatchResult(fit_score=round(fit, 4), top_bullets=top_bullets, keywords=keywords)
+    return MatchResult(
+        fit_score=round(fit, 4), top_bullets=top_bullets, keywords=keywords, jd_vector=jd_vec
+    )

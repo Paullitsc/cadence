@@ -102,6 +102,9 @@ class Application(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     tailored_resume_path: Optional[str] = None  # rendered PDF (or None if not rendered)
     tailored_resume_yaml: Optional[str] = None  # RenderCV YAML (auditable source)
+    # Phase 5: the DURABLE CV artifact. Local paths die with the CI runner; the Drive
+    # link is what the Google Sheet shows. Grouped jobs (similar JDs) share one link.
+    cv_drive_link: Optional[str] = None
     drafted_answers: dict[str, str] = Field(default_factory=dict)  # question -> answer
     human_review: bool = False  # high-priority role → flagged for a closer human look
     status: str = "pending_review"  # never auto-submitted
@@ -146,13 +149,36 @@ class Outreach(BaseModel):
 
     subject: Optional[str] = None  # email only
     body: str = ""  # for email this INCLUDES the CAN-SPAM footer that will be sent
-    status: str = "pending_review"  # pending_review | approved | sent | suppressed | failed
+    # Lifecycle: pending_review -> (gmail_draft_created) -> sent -> replied; also
+    # approved | suppressed | failed. gmail_draft_created (Phase 5) means a REAL Gmail
+    # draft exists for the human to edit + send — still never auto-sent.
+    status: str = "pending_review"
     suppressed: bool = False  # contact is on the suppression list → blocked from send
     human_review: bool = False
     used_llm: bool = False
 
     sent_at: Optional[str] = None
     provider_message_id: Optional[str] = None  # Gmail message id after a successful send
+    # Phase 5: the Gmail draft created for this outreach (edit + send from Gmail).
+    gmail_draft_id: Optional[str] = None
+    gmail_draft_link: Optional[str] = None
+
+
+class CvCacheEntry(BaseModel):
+    """One reusable tailored CV, for the ``cv_cache`` table (Phase 5 cost saver).
+
+    Keyed by a stable hash of (selected bullet ids + normalized keyword set) — see
+    ``resume.grouping.cv_cache_key``. If a future run produces the same key, the
+    stored CV is reused outright (no LLM tailoring call, no render, no re-upload),
+    which catches cross-run duplicates the way within-run clustering catches same-run
+    ones.
+    """
+
+    cache_key: str
+    tailored_resume_yaml: str  # the auditable CV source, re-renderable for free
+    cv_drive_link: Optional[str] = None  # durable artifact (None on Drive-less local runs)
+    drive_file_id: Optional[str] = None
+    pdf_path: Optional[str] = None  # local artifact from the run that built it
 
 
 class RunRecord(BaseModel):
