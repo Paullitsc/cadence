@@ -23,7 +23,7 @@ FIXTURE = str(Path(__file__).parent / "fixtures" / "master_resume_sample.yaml")
 JOB = Job(company_name="Acme Labs", title="Backend Intern", url="https://acme.com/jobs/1")
 
 
-def _ctx(tmp_path, resume, *, human_review=False, **settings_over):
+def _ctx(tmp_path, resume, *, human_review=False, dual_trigger=True, **settings_over):
     settings = Settings(
         _env_file=None, storage_backend="sqlite",
         database_path=str(tmp_path / "p.db"), master_resume_file=FIXTURE,
@@ -31,8 +31,10 @@ def _ctx(tmp_path, resume, *, human_review=False, **settings_over):
     )
     app = Application(dedupe_key=JOB.dedupe_key(), company_name=JOB.company_name,
                       title=JOB.title, url=JOB.url, human_review=human_review)
+    # Phase 4: outreach is drafted only for dual-trigger roles.
     prepared = PreparedApplication(job=JOB, keywords=["python", "kafka"], app=app,
-                                   top_bullets=all_bullets(resume))
+                                   top_bullets=all_bullets(resume),
+                                   favorable=dual_trigger, dual_trigger=dual_trigger)
     ctx = StageContext(run_id="test-run", settings=settings)
     ctx.data["prepared"] = [prepared]
     ctx.data["resume"] = resume
@@ -69,6 +71,15 @@ def test_stage_no_prepared_is_a_noop(tmp_path):
     ctx = StageContext(run_id="r", settings=settings)
     result = draft_outreach.run(ctx)
     assert result.counts["outreach_drafted"] == 0
+
+
+def test_stage_skips_non_dual_trigger_roles(tmp_path):
+    """A prepared role that isn't dual-trigger gets an application but NO outreach."""
+    resume = load_master_resume(FIXTURE)
+    ctx, _ = _ctx(tmp_path, resume, dual_trigger=False)
+    result = draft_outreach.run(ctx)
+    assert result.counts["outreach_drafted"] == 0
+    assert result.counts["dual_trigger_roles"] == 0
 
 
 def test_stage_flags_a_suppressed_contact(tmp_path, monkeypatch):

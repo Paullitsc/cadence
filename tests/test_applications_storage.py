@@ -44,6 +44,17 @@ def test_get_missing_application_returns_none(tmp_path):
     assert store.get_application("nope") is None
 
 
+def test_list_applications_orders_by_fit_and_filters_by_status(tmp_path):
+    store = SQLiteStore(str(tmp_path / "p.db"))
+    store.save_application(_app(dedupe_key="low", fit_score=0.30, status="pending_review"))
+    store.save_application(_app(dedupe_key="high", fit_score=0.90, status="pending_review"))
+    store.save_application(_app(dedupe_key="done", fit_score=0.99, status="submitted"))
+
+    pending = store.list_applications(status="pending_review")
+    assert [a.dedupe_key for a in pending] == ["high", "low"]  # highest fit first
+    assert {a.dedupe_key for a in store.list_applications()} == {"low", "high", "done"}
+
+
 def test_save_application_upsert_preserves_created_at(tmp_path):
     db = str(tmp_path / "p.db")
     store = SQLiteStore(db)

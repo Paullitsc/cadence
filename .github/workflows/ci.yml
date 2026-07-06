@@ -22,3 +22,6 @@ jobs:
         run: uv run ruff check .
       - name: Test
         run: uv run pytest
+      # End-to-end smoke: exercise every stage from bundled fixtures, zero live creds.
+      - name: Dry run (all stages)
+        run: uv run python -m internship_pipeline.run_daily --dry-run

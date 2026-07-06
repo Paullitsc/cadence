@@ -30,6 +30,7 @@ from ..resume.matching import job_text
 from ..resume.models import BulletRef
 from ..resume.rendercv import write_and_render
 from ..storage import get_storage
+from ..triggers import favorability, is_dual_trigger
 
 NAME = "match_and_slice"
 
@@ -48,6 +49,10 @@ class PreparedApplication:
     keywords: list[str]
     app: Application
     top_bullets: list[BulletRef] = field(default_factory=list)
+    # Phase 4 dual-trigger: favorable + high-fit → also draft outreach for this role.
+    favorable: bool = False
+    favorable_reason: str = ""
+    dual_trigger: bool = False
 
 
 def run(ctx: StageContext) -> StageResult:
@@ -78,21 +83,41 @@ def run(ctx: StageContext) -> StageResult:
     bullet_vectors = embedder.embed([b.searchable_text() for b in bullets])
     complete = build_default_complete(s)  # None -> deterministic select-only
 
+    # --- Pass 1: score EVERY new job (local embeddings — cheap). ---
+    scored = []
+    for job in jobs:
+        match = score_job(
+            job, bullets, bullet_vectors, embedder, resume=resume, top_k=s.top_k_bullets
+        )
+        if match.fit_score < s.fit_score_threshold:
+            log.info(
+                "below fit threshold; skipping",
+                extra={"run_id": ctx.run_id, "company": job.company_name,
+                       "fit": match.fit_score, "threshold": s.fit_score_threshold},
+            )
+            continue
+        scored.append((job, match))
+
+    # --- Cost/volume guard: prepare only the BEST-fit roles this run. Everything
+    # above threshold was scored; only the top-N spend LLM calls + a PDF render.
+    scored.sort(key=lambda jm: jm[1].fit_score, reverse=True)
+    capped = scored[: max(0, s.max_applications_per_run)]
+    if len(capped) < len(scored):
+        log.info(
+            "application cap applied",
+            extra={"run_id": ctx.run_id, "above_threshold": len(scored),
+                   "prepared_cap": s.max_applications_per_run},
+        )
+
+    # --- Pass 2: tailor + render + store the selected roles. ---
     prepared: list[PreparedApplication] = []
     storage = get_storage(s)
     try:
-        for job in jobs:
-            match = score_job(
-                job, bullets, bullet_vectors, embedder, resume=resume, top_k=s.top_k_bullets
-            )
-            if match.fit_score < s.fit_score_threshold:
-                log.info(
-                    "below fit threshold; skipping",
-                    extra={"run_id": ctx.run_id, "company": job.company_name,
-                           "fit": match.fit_score, "threshold": s.fit_score_threshold},
-                )
-                continue
-
+        for job, match in capped:
+            fav = favorability(job, s)
+            dual = is_dual_trigger(match.fit_score, fav.favorable, s)
+            # human_review flags a closer look on high-fit OR target-company roles;
+            # the dual-trigger (high-fit AND favorable) is the stricter outreach gate.
             high_priority = (
                 match.fit_score >= s.high_priority_threshold
                 or job.company_name.lower() in s.target_company_set
@@ -124,13 +149,15 @@ def run(ctx: StageContext) -> StageResult:
             storage.save_application(app)
             prepared.append(
                 PreparedApplication(
-                    job=job, keywords=match.keywords, app=app, top_bullets=match.top_bullets
+                    job=job, keywords=match.keywords, app=app, top_bullets=match.top_bullets,
+                    favorable=fav.favorable, favorable_reason=fav.reason, dual_trigger=dual,
                 )
             )
             log.info(
                 "prepared tailored résumé",
                 extra={"run_id": ctx.run_id, "company": job.company_name, "title": job.title,
                        "fit": match.fit_score, "human_review": app.human_review,
+                       "favorable": fav.favorable, "dual_trigger": dual,
                        "pdf": pdf_path, "used_llm": tailored.used_llm},
             )
     finally:
@@ -140,8 +167,10 @@ def run(ctx: StageContext) -> StageResult:
     ctx.data["resume"] = resume  # reused by prepare_applications (no reload/relog)
     counts = {
         "jobs_scored": len(jobs),
+        "above_threshold": len(scored),
         "applications_prepared": len(prepared),
         "high_priority": sum(1 for p in prepared if p.app.human_review),
+        "dual_trigger": sum(1 for p in prepared if p.dual_trigger),
     }
     log.info("stage done", extra={"run_id": ctx.run_id, "stage": NAME, **counts})
     return StageResult(name=NAME, counts=counts, notes=f"prepared={len(prepared)}")

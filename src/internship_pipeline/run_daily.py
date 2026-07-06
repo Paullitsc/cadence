@@ -126,7 +126,22 @@ def main() -> int:
         help="Run only this stage (repeatable). Default: all stages.",
     )
     parser.add_argument("--log-level", default=None, help="Override LOG_LEVEL.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Exercise every stage from bundled fixtures with zero live credentials.",
+    )
     args = parser.parse_args()
+
+    if args.dry_run:
+        from .config import build_dry_run_settings
+
+        settings = build_dry_run_settings()
+        configure_logging(args.log_level or "INFO")
+        record = run_pipeline(stages=args.stage, settings=settings)
+        print(f"dry-run {record.status}: {record.counts}")
+        print(f"digest → {settings.digest_dir}/latest.html")
+        return 0 if record.status in {"success", "partial"} else 1
 
     settings = get_settings()
     configure_logging(args.log_level or settings.log_level)

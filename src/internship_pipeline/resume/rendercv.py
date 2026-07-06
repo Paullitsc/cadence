@@ -6,11 +6,16 @@ and skills are rendered verbatim from the master résumé. Rendering is one CLI 
 (``rendercv render``); if RenderCV is not installed we still write the YAML and skip
 the PDF, so the pipeline degrades gracefully.
 
-    # VERIFY: RenderCV's YAML schema (cv.sections entry keys: institution/area/degree
-    # for education; company/position/highlights for experience; label/details for
-    # skills; social_networks network/username) is stable but should be confirmed
-    # against the installed RenderCV version — run `rendercv new "Your Name"` once to
-    # see the reference shape (ACTIONS_FOR_PAUL.md).
+Links: RenderCV renders Markdown ``[text](url)`` in names/highlights as real clickable
+PDF links (verified against rendercv 2.8 → typst ``#link``). A project with a ``url``
+therefore gets its NAME emitted as a Markdown link (the bare ``url:`` key on an entry
+is silently ignored by RenderCV — it is NOT the way to link). Markdown links written
+inside bullet text in ``master_resume.yaml`` flow through tailoring verbatim and render
+clickable too.
+
+Schema note: entry keys (institution/area/degree; company/position/highlights;
+label/details; social_networks network/username) confirmed against rendercv 2.8
+(`rendercv.schema.models.cv.section`).
 """
 
 from __future__ import annotations
@@ -105,10 +110,10 @@ def build_rendercv_cv(resume: MasterResume, tailored: list[TailoredBullet]) -> d
         highlights = proj_bullets.get(proj.name)
         if not highlights:
             continue
-        entry = {"name": proj.name, "highlights": highlights}
-        if proj.url:
-            entry["url"] = proj.url
-        project_entries.append(entry)
+        # A linked project renders its name as a clickable Markdown link. (A bare
+        # `url:` key is ignored by RenderCV entries — the link must be in the text.)
+        name = f"[{proj.name}]({proj.url})" if proj.url else proj.name
+        project_entries.append({"name": name, "highlights": highlights})
     if project_entries:
         sections["projects"] = project_entries
 
@@ -159,9 +164,18 @@ def write_and_render(cv_doc: dict, out_dir: str, slug: str) -> tuple[str, Option
         log.info("rendercv CLI not found; wrote YAML only", extra={"yaml": str(yaml_path)})
         return str(yaml_path), None
 
+    # Pin the PDF to <slug>.pdf so every job keeps its OWN artifact — the default
+    # (rendercv_output/<Name>_CV.pdf) is named after the person and would be
+    # overwritten by each subsequent job in the same run. Skip md/html/png side
+    # outputs; the tracker only needs the PDF (+ the YAML written above).
+    pdf_target = out / f"{slug}.pdf"
     try:
         proc = subprocess.run(
-            ["rendercv", "render", yaml_path.name],
+            [
+                "rendercv", "render", yaml_path.name,
+                "--pdf-path", pdf_target.name,  # relative to the input file
+                "-nomd", "-nohtml", "-nopng", "-q",
+            ],
             cwd=str(out),
             capture_output=True,
             text=True,
@@ -178,7 +192,6 @@ def write_and_render(cv_doc: dict, out_dir: str, slug: str) -> tuple[str, Option
         )
         return str(yaml_path), None
 
-    pdfs = sorted(out.glob("**/*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)
-    pdf_path = str(pdfs[0]) if pdfs else None
+    pdf_path = str(pdf_target) if pdf_target.exists() else None
     log.info("rendered résumé PDF", extra={"pdf": pdf_path})
     return str(yaml_path), pdf_path

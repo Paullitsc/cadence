@@ -28,7 +28,7 @@ def test_render_includes_jobs_and_count():
     assert "SWE Intern" in html
     assert "ML Intern" in html
     assert "https://acme/1" in html
-    assert "2</span> today" in html
+    assert "New internships today — 2" in html
     # Grouped + sorted by company: Acme appears before Beta Inc.
     assert html.index("Acme") < html.index("Beta Inc")
 
@@ -36,7 +36,7 @@ def test_render_includes_jobs_and_count():
 def test_render_empty_state():
     html = render_digest(jobs=[], run_id="r1")
     assert "No new active roles" in html
-    assert "0</span> today" in html
+    assert "New internships today — 0" in html
 
 
 def test_write_digest_creates_dated_and_latest(tmp_path):

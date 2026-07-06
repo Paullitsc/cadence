@@ -6,10 +6,14 @@ secret is wired in by the phase that needs it (see ACTIONS_FOR_PAUL.md).
 
 from __future__ import annotations
 
+import tempfile
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 class Settings(BaseSettings):
@@ -67,6 +71,11 @@ class Settings(BaseSettings):
     max_tailored_bullets: int = 10  # keep the tailored résumé to ~one page
     fit_score_threshold: float = 0.30  # below this, don't prepare an application
     high_priority_threshold: float = 0.55  # at/above this, flag human_review
+    # Cost/volume guard: prepare at most this many applications per run, BEST-fit
+    # first. Scoring (embeddings, local) still covers every new job; only the top-N
+    # go through LLM tailoring + PDF render + answer/outreach drafting. Protects the
+    # first live run (~1,200+ new jobs on day one) from an LLM/render blowout.
+    max_applications_per_run: int = 15
     # Comma-separated company names that always count as high-priority (dual-trigger
     # favorable-role flag). Parsed via ``target_company_set``.
     target_companies: str = ""
@@ -106,6 +115,36 @@ class Settings(BaseSettings):
     gmail_oauth_token_json: Optional[str] = None  # path to authorized-user token JSON
     gmail_credentials_json: Optional[str] = None  # path to OAuth client-secrets JSON (one-time auth)
     gmail_send_scope: str = "https://www.googleapis.com/auth/gmail.send"
+    # Phase 4 reply-scan needs read access. The token must be minted with BOTH scopes
+    # (gmail_auth requests the full ``gmail_scopes`` list below).
+    gmail_read_scope: str = "https://www.googleapis.com/auth/gmail.readonly"
+
+    # --- Phase 4: dual-trigger, digest email, reply scan, alerts, dry-run ---
+    # Dual-trigger = enqueue BOTH a prepared application AND a drafted outreach message
+    # for a role that is high-fit AND "favorable". A role is favorable when it's a target
+    # company OR was posted within ``favorable_recent_days`` (an honest "act soon" proxy —
+    # the free feeds don't expose a hard application deadline). ``high_priority_threshold``
+    # is the high-fit bar (shared with human_review flagging). All thresholds configurable.
+    favorable_recent_days: int = 7
+
+    # Morning digest email (Gmail). Sending the digest TO YOURSELF is safe to automate, so
+    # this is the one outbound action the daily run may perform — gated on creds + this flag.
+    digest_top_n: int = 10  # top-N applications by fit score shown in the digest
+    digest_email_enabled: bool = False  # off by default → digest is written to file only
+    digest_to_email: Optional[str] = None  # recipient; defaults to outreach_from_email (self)
+    # Recruiter-reply scan: a best-effort Gmail search surfacing recent inbound messages to
+    # review. Heuristic (not thread-precise) — labeled as such in the digest. Empty = default.
+    reply_scan_days: int = 14
+    reply_scan_query: str = ""  # extra Gmail search terms appended to the default
+    reply_scan_max: int = 25
+
+    # Failure alert (Phase 4 assignment: implement one channel, stub the other).
+    alert_channel: Literal["email", "slack"] = "email"  # chosen: email (Gmail)
+    slack_webhook_url: Optional[str] = None  # only used by the stubbed slack channel
+
+    # End-to-end dry-run: exercise every stage from bundled fixtures with zero live creds.
+    dry_run: bool = False
+    dry_run_jobs_file: Optional[str] = None  # None → bundled fixtures/dry_run_jobs.json
 
     # --- Secrets (optional until their phase) ---
     anthropic_api_key: Optional[str] = None  # Phase 2+
@@ -117,8 +156,53 @@ class Settings(BaseSettings):
         """Lowercased set of always-high-priority company names."""
         return {c.strip().lower() for c in self.target_companies.split(",") if c.strip()}
 
+    @property
+    def gmail_scopes(self) -> list[str]:
+        """All Gmail scopes the app uses (send for outreach, readonly for reply scan)."""
+        return [self.gmail_send_scope, self.gmail_read_scope]
+
+    @property
+    def digest_recipient(self) -> Optional[str]:
+        """Who the digest email goes to — defaults to the sender (yourself)."""
+        return (self.digest_to_email or self.outreach_from_email or "").strip() or None
+
 
 @lru_cache
 def get_settings() -> Settings:
     """Process-wide settings singleton."""
     return Settings()
+
+
+def build_dry_run_settings(*, work_dir: Optional[str] = None) -> Settings:
+    """Fully self-contained settings for ``--dry-run``: bundled fixtures, temp SQLite,
+    deterministic embedder, and every external source / credential disabled.
+
+    Thresholds are relaxed and a fixture company is targeted so at least one role fires
+    the dual-trigger — exercising the outreach path — while the others stay
+    application-only, so a single run touches every branch with zero live creds.
+    """
+    base = Path(work_dir or tempfile.mkdtemp(prefix="internship-dry-run-"))
+    return Settings(
+        _env_file=None,
+        dry_run=True,
+        dry_run_jobs_file=str(_FIXTURES / "dry_run_jobs.json"),
+        storage_backend="sqlite",
+        database_path=str(base / "pipeline.db"),
+        master_resume_file=str(_FIXTURES / "dry_run_resume.yaml"),
+        embedding_backend="hashing",  # deterministic, no model download
+        enable_simplify=False,
+        enable_jsearch=False,
+        enable_hunter=False,
+        enable_apollo=False,
+        anthropic_api_key=None,  # deterministic tailoring / no answer drafting
+        gmail_oauth_token_json=None,  # no send, no reply scan
+        digest_email_enabled=False,
+        digest_dir=str(base / "digests"),
+        resume_output_dir=str(base / "resumes"),
+        target_companies="Dry Run Labs",  # → one favorable role → dual-trigger
+        fit_score_threshold=0.0,
+        high_priority_threshold=0.0,
+        outreach_from_name="Dry Run Candidate",
+        outreach_from_email="candidate@example.com",
+        outreach_physical_address="123 Example St, Remoteville",
+    )

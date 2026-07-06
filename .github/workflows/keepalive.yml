@@ -1,0 +1,32 @@
+name: Keep-alive
+
+# GitHub disables SCHEDULED workflows after 60 days with no repository activity, which
+# would silently stop the daily sourcing cron. This weekly no-op commit keeps the repo
+# "active" so the schedule is never auto-disabled. Cheap insurance; runs in seconds.
+on:
+  schedule:
+    - cron: "17 6 * * 1"      # weekly, Monday 06:17 UTC (odd minute to dodge cron peaks)
+  workflow_dispatch: {}
+
+permissions:
+  contents: write             # needed to push the keep-alive commit
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Touch keep-alive marker and commit
+        run: |
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .keepalive
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .keepalive
+          # "[skip ci]" keeps this from triggering the CI workflow.
+          git commit -m "chore: weekly keep-alive [skip ci]" || { echo "nothing to commit"; exit 0; }
+          git push

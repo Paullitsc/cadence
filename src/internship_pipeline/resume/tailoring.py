@@ -14,6 +14,7 @@ the top-K bullets are kept verbatim in fit order. Same guardrail, same output sh
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from ..logging_config import get_logger
@@ -34,11 +35,21 @@ SYSTEM_INSTRUCTIONS = (
     "employers, technologies, or skills. Every claim must already be true of the "
     "provided bullet.\n"
     "3. Do not merge two bullets into one. One selected id -> one output bullet.\n"
-    "4. Prefer the bullets most relevant to the job. Return at most the requested "
+    "4. If a bullet contains a Markdown link [text](url), keep the link EXACTLY as "
+    "written — same text, same URL. Never drop, alter, or add links.\n"
+    "5. Prefer the bullets most relevant to the job. Return at most the requested "
     "number, ordered strongest first.\n\n"
     'Respond with ONLY a JSON object of the form: {"selected": [{"id": "<id>", '
     '"text": "<final bullet text>"}], "human_review": <true|false>}. No prose.'
 )
+
+# Markdown [text](url) — the link syntax RenderCV turns into a clickable PDF link.
+_MD_LINK_RE = re.compile(r"\[[^\]]+\]\(([^)\s]+)\)")
+
+
+def markdown_link_urls(text: str) -> set[str]:
+    """The set of URLs carried by Markdown links in ``text``."""
+    return set(_MD_LINK_RE.findall(text or ""))
 
 
 @dataclass
@@ -70,12 +81,24 @@ def enforce_grounding(candidate_text: str, original_text: str, input_vocab: set[
 
     "Grounded" = introduces no content token absent from the tailoring input. The
     original bullet is itself part of the input, so the fallback is always grounded.
+
+    Additionally, Markdown links must survive a rephrase INTACT: if the original
+    bullet carries ``[text](url)`` links, the rephrase must carry exactly the same
+    URL set (token checks can't see broken ``[]()`` syntax, so this is checked
+    structurally). Any dropped/mangled/added link → verbatim fallback.
     """
     ungrounded = content_tokens(candidate_text) - input_vocab
     if ungrounded:
         log.warning(
             "rejected ungrounded rephrase; keeping verbatim bullet",
             extra={"ungrounded_tokens": sorted(ungrounded)},
+        )
+        return original_text
+    original_links = markdown_link_urls(original_text)
+    if original_links != markdown_link_urls(candidate_text):
+        log.warning(
+            "rephrase dropped or altered a markdown link; keeping verbatim bullet",
+            extra={"original_links": sorted(original_links)},
         )
         return original_text
     return candidate_text

@@ -31,6 +31,7 @@ jobs:
       HIGH_PRIORITY_THRESHOLD: ${{ vars.HIGH_PRIORITY_THRESHOLD || '0.55' }}
       TOP_K_BULLETS: ${{ vars.TOP_K_BULLETS || '8' }}
       MAX_TAILORED_BULLETS: ${{ vars.MAX_TAILORED_BULLETS || '10' }}
+      MAX_APPLICATIONS_PER_RUN: ${{ vars.MAX_APPLICATIONS_PER_RUN || '15' }}
       TARGET_COMPANIES: ${{ vars.TARGET_COMPANIES || '' }}
       # --- Phase 3: cold outreach (drafting only — sending is always manual) ---
       ENABLE_HUNTER: ${{ vars.ENABLE_HUNTER || 'false' }}
@@ -40,6 +41,16 @@ jobs:
       OUTREACH_FROM_NAME: ${{ vars.OUTREACH_FROM_NAME || '' }}
       OUTREACH_FROM_EMAIL: ${{ vars.OUTREACH_FROM_EMAIL || '' }}
       OUTREACH_OPT_OUT: ${{ vars.OUTREACH_OPT_OUT || '' }}
+      # --- Phase 4: dual-trigger, morning digest email, alerts ---
+      FAVORABLE_RECENT_DAYS: ${{ vars.FAVORABLE_RECENT_DAYS || '7' }}
+      DIGEST_TOP_N: ${{ vars.DIGEST_TOP_N || '10' }}
+      DIGEST_EMAIL_ENABLED: ${{ vars.DIGEST_EMAIL_ENABLED || 'false' }}
+      DIGEST_TO_EMAIL: ${{ vars.DIGEST_TO_EMAIL || '' }}
+      REPLY_SCAN_DAYS: ${{ vars.REPLY_SCAN_DAYS || '14' }}
+      ALERT_CHANNEL: ${{ vars.ALERT_CHANNEL || 'email' }}
+      # Gmail authorized-user token (send + readonly). Written from a secret below; the
+      # send path / reply scan degrade gracefully to no-ops if it's unset.
+      GMAIL_OAUTH_TOKEN_JSON: gmail_token.json
       # Repo *secrets* (same page → Secrets). Unset ones are empty strings.
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
@@ -61,7 +72,16 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --extra dev --extra phase2
+        # gmail extra powers the digest email + the failure email alert (both optional).
+        run: uv sync --extra dev --extra phase2 --extra gmail
+
+      # Materialize the Gmail token from a secret (contents of the authorized-user JSON
+      # minted locally via `python -m internship_pipeline.outreach.gmail_auth`). If the
+      # secret is unset the file is empty and every Gmail path safely no-ops.
+      - name: Write Gmail token
+        env:
+          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
+        run: printf '%s' "$GMAIL_TOKEN_JSON" > gmail_token.json
 
       - name: Run daily pipeline
         run: uv run python -m internship_pipeline.run_daily
@@ -74,12 +94,10 @@ jobs:
           path: data/digests/
           if-no-files-found: ignore
 
-      # GitHub does NOT notify on scheduled-workflow failures. This is a STUB —
-      # wire a real Slack/email alert here in Phase 4 (SLACK_WEBHOOK_URL).
-      - name: Notify on failure (stub)
+      # GitHub does NOT notify on scheduled-workflow failures — raise a real alert.
+      # Chosen channel: email (Gmail). Best-effort: the alerts module never raises.
+      - name: Alert on failure (email)
         if: failure()
         run: |
-          echo "::warning title=Daily sourcing failed::Wire a real alert in Phase 4 (SLACK_WEBHOOK_URL)."
-          # Phase 4 example:
-          # curl -fsS -X POST -H 'Content-type: application/json' \
-          #   --data '{"text":"Daily internship sourcing run failed."}' "$SLACK_WEBHOOK_URL"
+          uv run python -m internship_pipeline.alerts email \
+            "Daily internship pipeline run FAILED — check the GitHub Actions logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

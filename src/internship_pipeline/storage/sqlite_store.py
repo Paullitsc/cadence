@@ -212,13 +212,8 @@ class SQLiteStore(Storage):
                 ),
             )
 
-    def get_application(self, dedupe_key: str) -> Optional[Application]:
-        with self._conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM applications WHERE dedupe_key=?", (dedupe_key,)
-            ).fetchone()
-        if row is None:
-            return None
+    @staticmethod
+    def _row_to_application(row: sqlite3.Row) -> Application:
         return Application(
             dedupe_key=row["dedupe_key"],
             company_name=row["company_name"],
@@ -232,6 +227,25 @@ class SQLiteStore(Storage):
             human_review=bool(row["human_review"]),
             status=row["status"],
         )
+
+    def get_application(self, dedupe_key: str) -> Optional[Application]:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM applications WHERE dedupe_key=?", (dedupe_key,)
+            ).fetchone()
+        return None if row is None else self._row_to_application(row)
+
+    def list_applications(self, status: Optional[str] = None) -> list[Application]:
+        with self._conn() as conn:
+            if status is None:
+                rows = conn.execute(
+                    "SELECT * FROM applications ORDER BY fit_score DESC"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM applications WHERE status=? ORDER BY fit_score DESC", (status,)
+                ).fetchall()
+        return [self._row_to_application(r) for r in rows]
 
     # --- Phase 3: outreach + suppression list ---
 

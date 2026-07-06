@@ -1,0 +1,29 @@
+[
+  {
+    "company_name": "Dry Run Labs",
+    "title": "Backend Engineering Intern",
+    "url": "https://dryrunlabs.com/careers/backend-intern",
+    "locations": ["Remote", "New York, NY"],
+    "date_posted": "RECENT",
+    "source_feed": "greenhouse",
+    "description": "Build data pipelines and backend services in Python. Experience with Kafka, SQL, and testing a plus. Summer internship."
+  },
+  {
+    "company_name": "Northwind Analytics",
+    "title": "Data Engineering Intern",
+    "url": "https://jobs.lever.co/northwind/data-intern",
+    "locations": ["San Francisco, CA"],
+    "date_posted": "STALE",
+    "source_feed": "lever",
+    "description": "Work on ingestion services and query planning. Python, SQL, and databases. Internship for CS students."
+  },
+  {
+    "company_name": "Quill Robotics",
+    "title": "Software Intern",
+    "url": "https://jobs.ashbyhq.com/quill/swe-intern",
+    "locations": ["Boston, MA"],
+    "date_posted": "RECENT",
+    "source_feed": "ashby",
+    "description": "General software engineering internship. Java, testing, and tooling."
+  }
+]

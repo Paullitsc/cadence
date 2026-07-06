@@ -11,6 +11,10 @@ token must not kill the run.
 
 from __future__ import annotations
 
+import json
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
 from ..logging_config import get_logger
 from ..models import Job, StageContext, StageResult
 from ..sourcing.ats import fetch_company
@@ -23,6 +27,27 @@ from ..storage import get_storage
 NAME = "source"
 
 log = get_logger(__name__)
+
+_BUNDLED_DRY_RUN_JOBS = Path(__file__).resolve().parent.parent / "fixtures" / "dry_run_jobs.json"
+
+
+def _dry_run_jobs(ctx: StageContext) -> list[Job]:
+    """Load fixture jobs for ``--dry-run`` — no network, no creds.
+
+    ``date_posted`` sentinels keep the dry-run deterministic forever: ``RECENT``
+    resolves to yesterday (inside the favorable window → exercises the dual-trigger)
+    and ``STALE`` to 30 days ago (outside it) — fixed dates would age out.
+    """
+    path = ctx.settings.dry_run_jobs_file or str(_BUNDLED_DRY_RUN_JOBS)
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    now = datetime.now(timezone.utc)
+    sentinel = {
+        "RECENT": (now - timedelta(days=1)).strftime("%Y-%m-%d"),
+        "STALE": (now - timedelta(days=30)).strftime("%Y-%m-%d"),
+    }
+    for d in data:
+        d["date_posted"] = sentinel.get(d.get("date_posted"), d.get("date_posted"))
+    return [Job(**d) for d in data]
 
 
 def _collect(ctx: StageContext) -> tuple[list[Job], dict[str, int]]:
@@ -97,7 +122,13 @@ def _collect(ctx: StageContext) -> tuple[list[Job], dict[str, int]]:
 
 def run(ctx: StageContext) -> StageResult:
     log.info("stage start", extra={"run_id": ctx.run_id, "stage": NAME})
-    jobs, per_source = _collect(ctx)
+    if ctx.settings.dry_run:
+        jobs = _dry_run_jobs(ctx)
+        per_source = {"dry_run_fixture": len(jobs)}
+        log.info("dry-run: sourcing from bundled fixtures",
+                 extra={"run_id": ctx.run_id, "count": len(jobs)})
+    else:
+        jobs, per_source = _collect(ctx)
 
     # Dedupe within this run (a role can appear in several feeds).
     seen: set[str] = set()

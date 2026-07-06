@@ -56,6 +56,10 @@ class Storage(ABC):
     def get_application(self, dedupe_key: str) -> Optional[Application]:
         """Load a stored application by job dedupe key, or None if absent."""
 
+    @abstractmethod
+    def list_applications(self, status: Optional[str] = None) -> list[Application]:
+        """List applications, optionally filtered by status (highest fit first)."""
+
     # --- Phase 3: outreach + suppression list ---
 
     @abstractmethod

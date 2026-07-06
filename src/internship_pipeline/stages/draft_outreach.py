@@ -1,6 +1,10 @@
-"""Stage: draft outreach (Phase 3).
+"""Stage: draft outreach (Phase 3 drafting; Phase 4 dual-trigger gating).
 
-For each application prepared by ``match_and_slice``, resolve an outreach contact,
+Only roles that ``match_and_slice`` marked **dual_trigger** (high-fit AND favorable)
+get outreach — every other prepared role is application-only. This keeps the scarce,
+sometimes-paid contact lookups pointed at the roles worth the extra push.
+
+For each dual-trigger application prepared by ``match_and_slice``, resolve an outreach contact,
 draft a short, specific cold email + a LinkedIn note from the SAME real top bullets
 Phase 2 already retrieved (never invented projects), append the CAN-SPAM footer to
 the email, flag recipients on the do-not-contact list, and persist two
@@ -44,10 +48,19 @@ def run(ctx: StageContext) -> StageResult:
     log.info("stage start", extra={"run_id": ctx.run_id, "stage": NAME})
     s = ctx.settings
 
-    prepared = ctx.data.get("prepared", [])
+    prepared_all = ctx.data.get("prepared", [])
+    # Phase 4 dual-trigger gate: outreach only for high-fit AND favorable roles.
+    prepared = [p for p in prepared_all if getattr(p, "dual_trigger", False)]
     if not prepared:
-        log.info("no prepared applications to draft outreach for", extra={"run_id": ctx.run_id})
-        return StageResult(name=NAME, counts={"outreach_drafted": 0})
+        log.info(
+            "no dual-trigger roles to draft outreach for",
+            extra={"run_id": ctx.run_id, "prepared_total": len(prepared_all)},
+        )
+        return StageResult(
+            name=NAME,
+            counts={"outreach_drafted": 0, "dual_trigger_roles": 0},
+            notes=f"prepared={len(prepared_all)}, dual_trigger=0",
+        )
 
     resume = ctx.data.get("resume")
     if resume is None:
@@ -165,6 +178,7 @@ def run(ctx: StageContext) -> StageResult:
     ctx.data["outreach"] = drafts
     counts = {
         "outreach_drafted": len(drafts),
+        "dual_trigger_roles": len(prepared),
         "email_drafts": len(prepared),
         "linkedin_drafts": len(prepared),
         "verified_contacts": verified,

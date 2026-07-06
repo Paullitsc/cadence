@@ -61,11 +61,15 @@ experiences:
         metrics: true
 
 # --- Projects (same bullet shape) ---
+# `url:` makes the project NAME a clickable link in the rendered PDF.
+# You can also put Markdown links [text](https://...) INSIDE any bullet text —
+# they render as clickable PDF links, and tailoring preserves them exactly
+# (a rephrase that drops or alters a link is rejected → verbatim fallback).
 projects:
   - name: Placeholder Project
     url: https://github.com/example/placeholder
     bullets:
-      - text: "Implemented a SQL query planner in Java for a toy database."
+      - text: "Implemented a SQL query planner in Java for a toy database ([demo](https://example.com/demo))."
         tags: [java, databases, systems]
         metrics: false
 

@@ -1,0 +1,42 @@
+# Bundled dry-run résumé — placeholder (NOT real) data, so `--dry-run` exercises every
+# stage with zero credentials and never touches the user's real master_resume.yaml.
+placeholder: false
+name: Dry Run Candidate
+email: candidate@example.com
+location: Remoteville
+links:
+  linkedin: https://www.linkedin.com/in/dryrun
+  github: https://github.com/dryrun
+summary: Backend-focused computer science student.
+education:
+  - institution: Example University
+    area: Computer Science
+    degree: BSc
+    start_date: "2023-09"
+    end_date: "2027-05"
+    highlights:
+      - "GPA 3.8/4.0"
+experiences:
+  - company: Example Labs
+    role: Software Engineer Intern
+    location: Remote
+    start_date: "2025-05"
+    end_date: "2025-08"
+    bullets:
+      - text: "Built a data pipeline processing two million events per day using Python and Kafka."
+        tags: [backend, data, python, kafka]
+        metrics: true
+      - text: "Added integration tests covering the ingestion service in Python."
+        tags: [testing, python]
+        metrics: false
+projects:
+  - name: Query Planner
+    url: https://github.com/dryrun/query-planner
+    bullets:
+      - text: "Implemented a SQL query planner in Java for a teaching database."
+        tags: [java, databases]
+        metrics: false
+skills:
+  languages: [Python, Java, SQL]
+  frameworks: [Flask]
+  tools: [Git, Docker]

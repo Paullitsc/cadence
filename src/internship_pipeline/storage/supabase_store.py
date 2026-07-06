@@ -150,16 +150,8 @@ class SupabaseStore(Storage):
         )
         resp.raise_for_status()
 
-    def get_application(self, dedupe_key: str) -> Optional[Application]:
-        resp = self.client.get(
-            f"{self.base}/applications",
-            params={"select": "*", "dedupe_key": f"eq.{dedupe_key}", "limit": "1"},
-        )
-        resp.raise_for_status()
-        rows = resp.json()
-        if not rows:
-            return None
-        row = rows[0]
+    @staticmethod
+    def _row_to_application(row: dict) -> Application:
         return Application(
             dedupe_key=row["dedupe_key"],
             company_name=row["company_name"],
@@ -173,6 +165,23 @@ class SupabaseStore(Storage):
             human_review=bool(row.get("human_review")),
             status=row.get("status", "pending_review"),
         )
+
+    def get_application(self, dedupe_key: str) -> Optional[Application]:
+        resp = self.client.get(
+            f"{self.base}/applications",
+            params={"select": "*", "dedupe_key": f"eq.{dedupe_key}", "limit": "1"},
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        return None if not rows else self._row_to_application(rows[0])
+
+    def list_applications(self, status: Optional[str] = None) -> list[Application]:
+        params = {"select": "*", "order": "fit_score.desc"}
+        if status is not None:
+            params["status"] = f"eq.{status}"
+        resp = self.client.get(f"{self.base}/applications", params=params)
+        resp.raise_for_status()
+        return [self._row_to_application(r) for r in resp.json()]
 
     # --- Phase 3: outreach + suppression list ---
 

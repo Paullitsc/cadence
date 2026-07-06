@@ -71,3 +71,28 @@ def test_match_and_slice_noop_without_new_jobs(phase2_settings):
     ctx = StageContext(run_id="t2", settings=phase2_settings)
     result = match_and_slice.run(ctx)
     assert result.counts == {"jobs_scored": 0, "applications_prepared": 0}
+
+
+def test_application_cap_prepares_only_best_fit(phase2_settings):
+    """Cost guard: all jobs are scored, but only the top-N by fit are prepared."""
+    phase2_settings = phase2_settings.model_copy(update={"max_applications_per_run": 1})
+    jobs = [
+        Job(company_name=f"Co{i}", title="Backend Intern", url=f"https://x/{i}",
+            description=desc)
+        for i, desc in enumerate([
+            "Build data pipelines in Python and Kafka on the backend team.",  # best match
+            "Barista role preparing espresso drinks.",                        # weak match
+            "Groundskeeping and landscaping position.",                       # weak match
+        ])
+    ]
+    ctx = StageContext(run_id="t3", settings=phase2_settings)
+    ctx.data["new_jobs"] = jobs
+
+    result = match_and_slice.run(ctx)
+    assert result.counts["jobs_scored"] == 3
+    assert result.counts["applications_prepared"] == 1  # capped
+    prepared = ctx.data["prepared"]
+    # the ONE prepared role is the best-fit one, not merely the first encountered
+    best = max(prepared, key=lambda p: p.app.fit_score)
+    assert prepared[0].app.fit_score == best.app.fit_score
+    assert result.counts["above_threshold"] >= 1
