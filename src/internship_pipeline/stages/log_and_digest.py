@@ -6,12 +6,17 @@ outreach drafts awaiting approval (including their Gmail-draft links), and possi
 recruiter replies — WRITE it to a local HTML file, and, when ``DIGEST_EMAIL_ENABLED``
 + Gmail are configured, email it to yourself (the only outbound action the daily
 run performs). Replies from contacts we actually emailed transition those outreach
-rows ``sent -> replied`` so the lifecycle is tracked in storage. Storage reads and
-the reply scan are best-effort: a failure degrades that section to empty rather
-than breaking the run.
+rows ``sent -> replied``, and applications whose job hasn't been re-seen in
+``application_expiry_days`` transition ``pending_review -> expired`` (storage only —
+never the tracker sheet's human-owned Status column), so the lifecycle is tracked
+in storage and the pending queue doesn't grow unbounded. Storage reads, the expiry
+pass, and the reply scan are all best-effort: a failure degrades that section to
+empty rather than breaking the run.
 """
 
 from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
 
 from ..digest import render_digest, render_digest_text, send_digest_email, write_digest
 from ..logging_config import get_logger
@@ -34,6 +39,30 @@ def _safe(fn, default, ctx, what):
         return default
 
 
+def _expire_stale_applications(storage, settings) -> int:
+    """Move ``pending_review`` applications to ``expired`` when their job hasn't
+    been re-seen in any feed for ``application_expiry_days`` — the proxy for "this
+    posting was filled or pulled". Storage-only: the tracker sheet's Status column
+    is human-owned after the initial "prepared" write (see tracker/rows.py) and is
+    never touched by this. Disabled when ``application_expiry_days <= 0``.
+    """
+    if settings.application_expiry_days <= 0:
+        return 0
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(days=settings.application_expiry_days)
+    ).isoformat()
+    stale_keys = storage.stale_job_keys(cutoff)
+    if not stale_keys:
+        return 0
+    expired = 0
+    for app in storage.list_applications(status="pending_review"):
+        if app.dedupe_key in stale_keys:
+            app.status = "expired"
+            storage.save_application(app)
+            expired += 1
+    return expired
+
+
 def run(ctx: StageContext) -> StageResult:
     log.info("stage start", extra={"run_id": ctx.run_id, "stage": NAME})
     s = ctx.settings
@@ -44,6 +73,10 @@ def run(ctx: StageContext) -> StageResult:
     # Gmail draft is still awaiting the human's send, so it stays in the digest.
     storage = get_storage(s)
     try:
+        # Expire stale applications FIRST so the pending count/queue below already
+        # excludes them.
+        expired_count = _safe(
+            lambda: _expire_stale_applications(storage, s), 0, ctx, "application expiry")
         pending_apps = _safe(
             lambda: storage.list_applications(status="pending_review"), [], ctx, "applications")
         pending_outreach: list[Outreach] = _safe(
@@ -72,6 +105,7 @@ def run(ctx: StageContext) -> StageResult:
         "total_sourced": ctx.data.get("jobs_total", 0),
         "applications_prepared": len(ctx.data.get("prepared", [])),
         "applications_pending": len(pending_apps),
+        "applications_expired": expired_count,
         "llm_calls_saved": ctx.data.get("llm_calls_saved", 0),
         "outreach_pending": len(pending_outreach),
         "replies_found": len(replies),
@@ -101,6 +135,7 @@ def run(ctx: StageContext) -> StageResult:
         name=NAME,
         counts={"new_jobs_today": len(new_jobs), "digest_written": 1, "digest_emailed": int(emailed),
                 "outreach_pending": len(pending_outreach), "applications_pending": len(pending_apps),
+                "applications_expired": expired_count,
                 "replies_found": len(replies), "outreach_replied": len(replied_rows)},
         notes=str(path),
     )

@@ -155,6 +155,13 @@ class SQLiteStore(Storage):
                 found.update(r[0] for r in rows)
         return found
 
+    def stale_job_keys(self, cutoff_iso: str) -> set[str]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT dedupe_key FROM jobs WHERE last_seen_at < ?", (cutoff_iso,)
+            ).fetchall()
+        return {r[0] for r in rows}
+
     def upsert_jobs(self, jobs: list[Job]) -> UpsertResult:
         if not jobs:
             return UpsertResult()

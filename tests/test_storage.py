@@ -75,3 +75,20 @@ def test_empty_upsert_is_noop(tmp_path):
     store = SQLiteStore(str(tmp_path / "p.db"))
     result = store.upsert_jobs([])
     assert result.new_count == 0 and result.seen == 0
+
+
+def test_stale_job_keys_only_returns_jobs_not_recently_seen(tmp_path):
+    store = SQLiteStore(str(tmp_path / "p.db"))
+    fresh = _job("https://x/fresh")
+    stale = _job("https://x/stale")
+    store.upsert_jobs([fresh, stale])
+
+    # Backdate `stale`'s last_seen_at directly (upsert_jobs always stamps "now").
+    with sqlite3.connect(str(tmp_path / "p.db")) as conn:
+        conn.execute(
+            "UPDATE jobs SET last_seen_at = ? WHERE dedupe_key = ?",
+            ("2000-01-01T00:00:00+00:00", stale.dedupe_key()),
+        )
+
+    cutoff = "2020-01-01T00:00:00+00:00"
+    assert store.stale_job_keys(cutoff) == {stale.dedupe_key()}

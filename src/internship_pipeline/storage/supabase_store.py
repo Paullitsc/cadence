@@ -107,6 +107,12 @@ class SupabaseStore(Storage):
             found.update(row["dedupe_key"] for row in resp.json())
         return found
 
+    def stale_job_keys(self, cutoff_iso: str) -> set[str]:
+        rows = self._get_all(
+            "jobs", {"select": "dedupe_key", "last_seen_at": f"lt.{cutoff_iso}"}
+        )
+        return {row["dedupe_key"] for row in rows}
+
     def _existing_snapshot(self, keys: list[str]) -> dict[str, dict]:
         """``_FROZEN_ON_REFRESH`` column values for whichever of ``keys`` already
         exist — both the new-vs-seen signal (membership) and what a re-seen row's

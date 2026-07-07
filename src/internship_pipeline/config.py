@@ -99,6 +99,13 @@ class Settings(BaseSettings):
     # favorable-role flag). Parsed via ``target_company_set``.
     target_companies: str = ""
     resume_output_dir: str = "data/resumes"
+    # An application whose job hasn't been re-seen in any feed for this many days is
+    # almost certainly filled/pulled — it's moved OUT of pending_review (storage
+    # only) so the digest queue and sync_tracker's reconcile don't grow unbounded.
+    # This NEVER touches the tracker sheet's Status column, which is human-owned
+    # after the initial "prepared" write (see tracker/rows.py) — storage's
+    # Application.status is a separate, pipeline-internal queue state. 0 disables.
+    application_expiry_days: int = 21
 
     # --- Phase 3: cold outreach ---
     # Contact lookup providers. Both OFF by default; the pipeline always falls back

@@ -85,3 +85,18 @@ def test_seen_job_refreshes_mutable_fields_but_freezes_the_rest():
     assert row["date_posted"] == "2020-01-01"
     assert row["source"] == "greenhouse:old"
     assert row["first_seen_at"] == "2020-01-01T00:00:00+00:00"
+
+
+def test_stale_job_keys_filters_by_last_seen_lt_cutoff():
+    seen_params = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_params.append(dict(request.url.params))
+        return httpx.Response(200, json=[{"dedupe_key": "abc123"}])
+
+    store = SupabaseStore("https://example.supabase.co", "key")
+    store.client = httpx.Client(transport=httpx.MockTransport(handler), headers=store.client.headers)
+
+    keys = store.stale_job_keys("2026-01-01T00:00:00+00:00")
+    assert keys == {"abc123"}
+    assert seen_params[0]["last_seen_at"] == "lt.2026-01-01T00:00:00+00:00"

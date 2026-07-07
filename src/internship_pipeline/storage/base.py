@@ -47,6 +47,15 @@ class Storage(ABC):
         """Insert new jobs, bump ``last_seen_at`` on ones already stored."""
 
     @abstractmethod
+    def stale_job_keys(self, cutoff_iso: str) -> set[str]:
+        """Dedupe keys of jobs whose ``last_seen_at`` is older than ``cutoff_iso``.
+
+        A job that has stopped reappearing in every feed run over run is the
+        proxy for "this posting was filled or pulled" — used to expire stale
+        ``pending_review`` applications (see ``application_expiry_days``).
+        """
+
+    @abstractmethod
     def record_run(self, run: RunRecord) -> None:
         """Persist a ``runs`` row for the daily log."""
 

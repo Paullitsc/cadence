@@ -33,6 +33,7 @@ jobs:
       MAX_TAILORED_BULLETS: ${{ vars.MAX_TAILORED_BULLETS || '10' }}
       MAX_APPLICATIONS_PER_RUN: ${{ vars.MAX_APPLICATIONS_PER_RUN || '40' }}
       TARGET_COMPANIES: ${{ vars.TARGET_COMPANIES || '' }}
+      APPLICATION_EXPIRY_DAYS: ${{ vars.APPLICATION_EXPIRY_DAYS || '21' }}
       # --- Phase 3: cold outreach (drafting only — sending is always manual) ---
       ENABLE_HUNTER: ${{ vars.ENABLE_HUNTER || 'false' }}
       ENABLE_APOLLO: ${{ vars.ENABLE_APOLLO || 'false' }}
