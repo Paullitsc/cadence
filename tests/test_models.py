@@ -36,6 +36,27 @@ def test_normalize_url_lowercases_host_and_strips_trailing_slash():
     assert a == b == "https://example.com/Jobs/123"
 
 
+def test_normalize_url_strips_tracking_params():
+    bare = normalize_url("https://example.com/jobs/123")
+    tracked = normalize_url("https://example.com/jobs/123?utm_source=Simplify&ref=Simplify")
+    assert bare == tracked
+
+
+def test_normalize_url_keeps_identity_params():
+    a = normalize_url("https://job-boards.greenhouse.io/acme/jobs/123?gh_jid=123")
+    b = normalize_url("https://job-boards.greenhouse.io/acme/jobs/123?gh_jid=456")
+    assert a != b
+
+
+def test_dedupe_key_ignores_tracking_params():
+    bare = Job(company_name="A", title="X", url="https://example.com/jobs/123")
+    tracked = Job(
+        company_name="A", title="X",
+        url="https://example.com/jobs/123?utm_source=Simplify&ref=Simplify",
+    )
+    assert bare.dedupe_key() == tracked.dedupe_key()
+
+
 def test_dedupe_key_stable_and_distinct():
     j1 = Job(company_name="A", title="X", url="https://example.com/jobs/123")
     j2 = Job(company_name="A", title="X", url="https://example.com/jobs/123/")

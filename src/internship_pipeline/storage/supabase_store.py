@@ -22,6 +22,13 @@ from .base import Storage, UpsertResult, chunked, suppression_matches
 
 log = get_logger(__name__)
 
+# PostgREST caps a single response at 1000 rows by default (server-side
+# `db-max-rows`). Left unhandled, every unbounded `list_*` here silently
+# truncates once a table crosses that size — reads keep succeeding, they just
+# quietly drop rows. Paginate with the `Range` header instead of trusting a
+# single GET to return everything.
+_PAGE_SIZE = 1000
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -38,6 +45,28 @@ class SupabaseStore(Storage):
                 "Content-Type": "application/json",
             },
         )
+
+    def _get_all(self, path: str, params: dict) -> list[dict]:
+        """GET every row from a PostgREST endpoint, paginating past the 1000-row cap.
+
+        Uses the ``Range`` header (PostgREST's pagination mechanism) rather than
+        trusting a plain GET to return the full table. Stops once a page comes
+        back short of ``_PAGE_SIZE`` — no dependency on a ``Content-Range`` total.
+        """
+        rows: list[dict] = []
+        offset = 0
+        while True:
+            resp = self.client.get(
+                f"{self.base}/{path}",
+                params=params,
+                headers={"Range-Unit": "items", "Range": f"{offset}-{offset + _PAGE_SIZE - 1}"},
+            )
+            resp.raise_for_status()
+            page = resp.json()
+            rows.extend(page)
+            if len(page) < _PAGE_SIZE:
+                return rows
+            offset += _PAGE_SIZE
 
     def _row(self, job: Job, now: str) -> dict:
         return {
@@ -181,9 +210,7 @@ class SupabaseStore(Storage):
         params = {"select": "*", "order": "fit_score.desc"}
         if status is not None:
             params["status"] = f"eq.{status}"
-        resp = self.client.get(f"{self.base}/applications", params=params)
-        resp.raise_for_status()
-        return [self._row_to_application(r) for r in resp.json()]
+        return [self._row_to_application(r) for r in self._get_all("applications", params)]
 
     # --- Phase 3: outreach + suppression list ---
 
@@ -265,9 +292,7 @@ class SupabaseStore(Storage):
         params = {"select": "*", "order": "created_at.desc"}
         if status is not None:
             params["status"] = f"eq.{status}"
-        resp = self.client.get(f"{self.base}/outreach", params=params)
-        resp.raise_for_status()
-        return [self._row_to_outreach(r) for r in resp.json()]
+        return [self._row_to_outreach(r) for r in self._get_all("outreach", params)]
 
     # --- Phase 5: cross-run CV cache ---
 
@@ -290,10 +315,7 @@ class SupabaseStore(Storage):
         )
 
     def list_cv_cache(self) -> list[CvCacheEntry]:
-        resp = self.client.get(
-            f"{self.base}/cv_cache", params={"select": "*", "order": "created_at.asc"}
-        )
-        resp.raise_for_status()
+        rows = self._get_all("cv_cache", {"select": "*", "order": "created_at.asc"})
         return [
             CvCacheEntry(
                 cache_key=r["cache_key"],
@@ -302,7 +324,7 @@ class SupabaseStore(Storage):
                 drive_file_id=r.get("drive_file_id"),
                 pdf_path=r.get("pdf_path"),
             )
-            for r in resp.json()
+            for r in rows
         ]
 
     def save_cv_cache(self, entry: CvCacheEntry) -> None:
@@ -333,9 +355,7 @@ class SupabaseStore(Storage):
         resp.raise_for_status()
 
     def list_suppressions(self) -> list[str]:
-        resp = self.client.get(f"{self.base}/suppressions", params={"select": "entry"})
-        resp.raise_for_status()
-        return [r["entry"] for r in resp.json()]
+        return [r["entry"] for r in self._get_all("suppressions", {"select": "entry"})]
 
     def is_suppressed(self, email: str) -> bool:
         return suppression_matches(email, self.list_suppressions())

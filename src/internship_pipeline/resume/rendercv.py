@@ -82,12 +82,13 @@ def _social_networks(resume: MasterResume) -> list[dict]:
 
 def build_rendercv_cv(resume: MasterResume, tailored: list[TailoredBullet]) -> dict:
     """Build the RenderCV document (``{"cv": ..., "design": ...}``) as a dict."""
-    # Regroup tailored bullets under their parent, preserving tailored order.
-    exp_bullets: dict[str, list[str]] = {}
-    proj_bullets: dict[str, list[str]] = {}
+    # Regroup tailored bullets under their parent ENTRY (by index, not company/
+    # project name — two experiences at the same company must not merge).
+    exp_bullets: dict[int, list[str]] = {}
+    proj_bullets: dict[int, list[str]] = {}
     for tb in tailored:
         bucket = exp_bullets if tb.ref.source == "experience" else proj_bullets
-        bucket.setdefault(tb.ref.parent, []).append(tb.text)
+        bucket.setdefault(tb.ref.parent_index, []).append(tb.text)
 
     sections: dict[str, list] = {}
 
@@ -113,8 +114,8 @@ def build_rendercv_cv(resume: MasterResume, tailored: list[TailoredBullet]) -> d
         ]
 
     experience_entries = []
-    for exp in resume.experiences:
-        highlights = exp_bullets.get(exp.company)
+    for ei, exp in enumerate(resume.experiences):
+        highlights = exp_bullets.get(ei)
         if not highlights:  # only include experiences that contributed a tailored bullet
             continue
         experience_entries.append(
@@ -135,8 +136,8 @@ def build_rendercv_cv(resume: MasterResume, tailored: list[TailoredBullet]) -> d
         sections["experience"] = experience_entries
 
     project_entries = []
-    for proj in resume.projects:
-        highlights = proj_bullets.get(proj.name)
+    for pi, proj in enumerate(resume.projects):
+        highlights = proj_bullets.get(pi)
         if not highlights:
             continue
         # A linked project renders its name as a clickable Markdown link. (A bare

@@ -12,11 +12,25 @@ import hashlib
 from datetime import datetime
 from enum import Enum
 from typing import Optional
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import BaseModel, Field, field_validator
 
 from .config import Settings, get_settings
+
+# Query params that identify a TRACKING SOURCE, not the posting itself — the same
+# job appears with/without these depending on which feed surfaced it (e.g.
+# SimplifyJobs appends ?utm_source=Simplify&ref=Simplify to the same Greenhouse
+# URL a company's own board serves bare). Stripped so dedupe collapses the
+# duplicate instead of storing (and re-tailoring) it twice. Deliberately narrow —
+# an identity param like Greenhouse's ``gh_jid`` must never be stripped.
+_TRACKING_PARAMS: frozenset[str] = frozenset(
+    """
+    utm_source utm_medium utm_campaign utm_term utm_content utm_id
+    ref ref_source referrer source src gh_src lever-origin lever-source
+    fbclid gclid mc_cid mc_eid igshid
+    """.split()
+)
 
 
 class JobSource(str, Enum):
@@ -33,14 +47,21 @@ class JobSource(str, Enum):
 def normalize_url(url: str) -> str:
     """Canonicalize a URL for dedupe.
 
-    Lowercases scheme + host, drops the fragment, and strips a trailing slash.
-    Path and query are preserved (they often identify the specific posting).
+    Lowercases scheme + host, drops the fragment, strips a trailing slash, and
+    drops known tracking params (``_TRACKING_PARAMS``) so the same posting
+    surfaced by different feeds — one bare, one with ``?utm_source=...`` —
+    collapses to one dedupe key. Other query params (often the posting's own
+    identity, e.g. ``gh_jid``) are preserved in their original order.
     """
     parts = urlsplit(url.strip())
     scheme = parts.scheme.lower()
     netloc = parts.netloc.lower()
     path = parts.path.rstrip("/")
-    return urlunsplit((scheme, netloc, path, parts.query, ""))
+    query = urlencode(
+        [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+         if k.lower() not in _TRACKING_PARAMS]
+    )
+    return urlunsplit((scheme, netloc, path, query, ""))
 
 
 class Job(BaseModel):

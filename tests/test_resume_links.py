@@ -47,6 +47,33 @@ def test_project_without_url_keeps_plain_name():
     assert doc["cv"]["sections"]["projects"][0]["name"] == "Query Planner"
 
 
+def test_two_roles_at_same_company_keep_separate_highlights():
+    # Two Experience entries sharing a company name (a promotion, a return
+    # internship, etc.) must not merge their bullets — each entry's highlights
+    # come only from ITS OWN bullets.
+    resume = load_master_resume(FIXTURE)
+    second_role = resume.experiences[0].model_copy(
+        update={
+            "role": "Senior Software Engineer Intern",
+            "start_date": "2026-05",
+            "end_date": "2026-08",
+            "bullets": [
+                b.model_copy(update={"text": f"Second role: {b.text}"})
+                for b in resume.experiences[0].bullets
+            ],
+        }
+    )
+    resume.experiences.append(second_role)
+
+    doc = build_rendercv_cv(resume, _tailored(resume))
+    entries = doc["cv"]["sections"]["experience"]
+    assert len(entries) == 2
+    first_highlights = entries[0]["highlights"]
+    second_highlights = entries[1]["highlights"]
+    assert all("Second role:" not in h for h in first_highlights)
+    assert all("Second role:" in h for h in second_highlights)
+
+
 # --- links survive tailoring ---------------------------------------------------- #
 def test_grounding_rejects_rephrase_that_drops_or_alters_a_link():
     orig = "Built a [pipeline](https://github.com/x/pipe) in Python."

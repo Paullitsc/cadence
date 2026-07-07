@@ -89,7 +89,12 @@ class BulletRef(BaseModel):
     tags: list[str] = Field(default_factory=list)
     metrics: bool = False
     source: str  # "experience" | "project"
-    parent: str  # company or project name (for regrouping in the rendered CV)
+    parent: str  # company or project name (display only — see parent_index)
+    # Index into resume.experiences / resume.projects (scoped by `source`). The
+    # grouping key for regrouping tailored bullets under their entry in
+    # rendercv.py: two experiences at the same company share `parent` (the
+    # company name) but not `parent_index`, so highlights don't merge across them.
+    parent_index: int = 0
 
     def searchable_text(self) -> str:
         """Text used for embedding + grounding (bullet text plus its tags).

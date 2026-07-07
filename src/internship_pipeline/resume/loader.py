@@ -50,6 +50,7 @@ def all_bullets(resume: MasterResume) -> list[BulletRef]:
                     metrics=bullet.metrics,
                     source="experience",
                     parent=exp.company,
+                    parent_index=ei,
                 )
             )
     for pi, proj in enumerate(resume.projects):
@@ -62,6 +63,7 @@ def all_bullets(resume: MasterResume) -> list[BulletRef]:
                     metrics=bullet.metrics,
                     source="project",
                     parent=proj.name,
+                    parent_index=pi,
                 )
             )
     return refs
