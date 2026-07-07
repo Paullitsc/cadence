@@ -11,7 +11,11 @@
       "allLocations": ["San Francisco", "Remote - US"]
     },
     "createdAt": 1781109739214,
-    "country": "US"
+    "country": "US",
+    "descriptionPlain": "Join our platform team.",
+    "lists": [
+      {"text": "Who You Are", "content": "&lt;li&gt;Experience with Python&lt;/li&gt;"}
+    ]
   },
   {
     "text": "Design Intern",

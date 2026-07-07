@@ -6,19 +6,29 @@ response field names below were confirmed against the live public feeds on
 guesses. All three feeds only return live/listed roles, so ``active`` is True
 except where a feed exposes an explicit flag (Ashby ``isListed``).
 
+Job descriptions (confirmed live 2026-07-07, same three boards): Greenhouse's
+``content`` is HTML-ENTITY-ESCAPED HTML (``&lt;p&gt;``) — decoded and stripped via
+``html_to_text``. Lever has no single description field; ``descriptionPlain`` (the
+intro) plus each ``lists[]`` section's ``text`` heading + HTML ``content`` (e.g.
+"What You'll Do", "Who You Are") together carry the actual requirements — the
+``lists[].content`` HTML is stripped the same way. Ashby exposes ``descriptionPlain``
+directly, no stripping needed. Capturing this (previously discarded) text is what lets
+Phase 2 matching/tailoring score against the real JD instead of just title+company.
+
 Each ``parse_*`` is pure (takes already-parsed JSON) so it is unit-testable from a
 fixture with no network; each ``fetch_*`` does the HTTP call.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 
 from ..logging_config import get_logger
 from ..models import Job, JobSource
 from .companies import CompanyTarget
+from .html_text import html_to_text
 from .http import get_json
 
 log = get_logger(__name__)
@@ -53,6 +63,7 @@ def parse_greenhouse(payload: dict[str, Any], *, slug: str, company_name: str) -
                 active=True,
                 source=f"greenhouse:{slug}",
                 source_feed=JobSource.GREENHOUSE,
+                description=html_to_text(j.get("content")) or None,
             )
         )
     return jobs
@@ -73,7 +84,32 @@ def fetch_greenhouse(
 # --- Lever ------------------------------------------------------------------
 # GET .../postings/{slug}?mode=json -> [ {...}, ... ]
 # posting: text (title), hostedUrl, applyUrl, createdAt (epoch ms),
-#          categories:{location, allLocations, team, commitment}
+#          categories:{location, allLocations, team, commitment},
+#          descriptionPlain (intro), lists:[{text (heading), content (HTML)}]
+
+
+def _lever_description(p: dict[str, Any]) -> Optional[str]:
+    """Join Lever's intro + requirement sections into one description text.
+
+    Lever has no single description field: ``descriptionPlain`` is just the
+    intro paragraph; the actual requirements live in ``lists`` — one entry per
+    section (e.g. "What You'll Do", "Who You Are"), each with a plain-text
+    ``text`` heading and an HTML ``content`` body.
+    """
+    parts: list[str] = []
+    plain = p.get("descriptionPlain")
+    if plain:
+        parts.append(str(plain))
+    for item in p.get("lists") or []:
+        if not isinstance(item, dict):
+            continue
+        heading = item.get("text")
+        if heading:
+            parts.append(str(heading))
+        body = html_to_text(item.get("content"))
+        if body:
+            parts.append(body)
+    return "\n".join(parts) if parts else None
 
 
 def parse_lever(payload: list[dict[str, Any]], *, slug: str, company_name: str) -> list[Job]:
@@ -97,6 +133,7 @@ def parse_lever(payload: list[dict[str, Any]], *, slug: str, company_name: str) 
                 active=True,
                 source=f"lever:{slug}",
                 source_feed=JobSource.LEVER,
+                description=_lever_description(p),
             )
         )
     return jobs
@@ -117,7 +154,8 @@ def fetch_lever(
 # --- Ashby ------------------------------------------------------------------
 # GET .../job-board/{slug}?includeCompensation=true -> {"jobs":[...]}
 # job: title, location (str), secondaryLocations:[{location, address}],
-#      jobUrl, applyUrl, publishedAt (ISO), isListed (bool), employmentType
+#      jobUrl, applyUrl, publishedAt (ISO), isListed (bool), employmentType,
+#      descriptionPlain (plain text, ready to use — no HTML stripping needed)
 
 
 def parse_ashby(payload: dict[str, Any], *, slug: str, company_name: str) -> list[Job]:
@@ -148,6 +186,7 @@ def parse_ashby(payload: dict[str, Any], *, slug: str, company_name: str) -> lis
                 active=bool(j.get("isListed", True)),
                 source=f"ashby:{slug}",
                 source_feed=JobSource.ASHBY,
+                description=j.get("descriptionPlain") or None,
             )
         )
     return jobs

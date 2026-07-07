@@ -30,6 +30,9 @@ def test_greenhouse_normalizes_and_skips_incomplete_rows():
     assert j.active is True
     assert j.source == "greenhouse:example"
     assert j.source_feed is JobSource.GREENHOUSE
+    # `content` is HTML-entity-escaped HTML; decoded + tags stripped for matching.
+    assert j.description == "Build things with Python."
+    assert jobs[1].description is None  # no content field on this row
 
 
 def test_lever_uses_company_name_and_all_locations():
@@ -45,6 +48,9 @@ def test_lever_uses_company_name_and_all_locations():
     assert j.locations == ["San Francisco", "Remote - US"]
     assert j.date_posted == "1781109739214"  # epoch ms coerced to str
     assert j.source_feed is JobSource.LEVER
+    # descriptionPlain (intro) + lists[] section headings/content (HTML stripped).
+    assert j.description == "Join our platform team.\nWho You Are\nExperience with Python"
+    assert jobs[1].description is None  # no descriptionPlain/lists on this row
     # Falls back to single `location` when allLocations is absent.
     assert jobs[1].locations == ["London"]
 
@@ -62,6 +68,7 @@ def test_ashby_filters_unlisted_and_flattens_secondary_locations():
     assert j.date_posted == "2026-06-10T17:21:26.410+00:00"
     assert j.active is True
     assert j.source_feed is JobSource.ASHBY
+    assert j.description == "Work on ML infrastructure."
 
 
 def test_empty_payloads_yield_no_jobs():

@@ -13,7 +13,8 @@
       "isRemote": false,
       "employmentType": "Intern",
       "jobUrl": "https://jobs.ashbyhq.com/example/a1",
-      "applyUrl": "https://jobs.ashbyhq.com/example/a1/application"
+      "applyUrl": "https://jobs.ashbyhq.com/example/a1/application",
+      "descriptionPlain": "Work on ML infrastructure."
     },
     {
       "id": "a2",
