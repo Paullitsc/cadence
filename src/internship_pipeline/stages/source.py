@@ -53,11 +53,18 @@ def _dry_run_jobs(ctx: StageContext) -> list[Job]:
     return [Job(**d) for d in data]
 
 
-def _collect(ctx: StageContext) -> tuple[list[Job], dict[str, int]]:
-    """Fetch every configured source, skipping any that fail. Returns (jobs, per_source)."""
+def _collect(ctx: StageContext) -> tuple[list[Job], dict[str, int], list[str]]:
+    """Fetch every configured source, skipping any that fail.
+
+    Returns ``(jobs, per_source, failed_sources)`` — ``failed_sources`` is the
+    label of every source that raised, so a persistent outage (a renamed board
+    token, a feed that moved) is visible in the stage counts/digest instead of
+    silently reducing job volume with only a WARNING buried in the logs.
+    """
     s = ctx.settings
     jobs: list[Job] = []
     per_source: dict[str, int] = {}
+    failed: list[str] = []
     client = build_client(timeout=s.http_timeout)
     try:
         # --- ATS feeds (companies.yaml) ---
@@ -73,6 +80,7 @@ def _collect(ctx: StageContext) -> tuple[list[Job], dict[str, int]]:
                     extra={"run_id": ctx.run_id, "company": target.name, "count": len(got)},
                 )
             except Exception as exc:  # skip-on-error per company
+                failed.append(label)
                 log.warning(
                     "ATS feed failed; skipping",
                     extra={"run_id": ctx.run_id, "company": target.name, "error": repr(exc)},
@@ -91,6 +99,7 @@ def _collect(ctx: StageContext) -> tuple[list[Job], dict[str, int]]:
                         extra={"run_id": ctx.run_id, "feed": label, "count": len(got)},
                     )
                 except Exception as exc:  # skip-on-error per feed
+                    failed.append(label)
                     log.warning(
                         "listings fetch failed; skipping",
                         extra={"run_id": ctx.run_id, "feed": label, "error": repr(exc)},
@@ -114,6 +123,7 @@ def _collect(ctx: StageContext) -> tuple[list[Job], dict[str, int]]:
                         extra={"run_id": ctx.run_id, "feed": label, "count": len(got)},
                     )
                 except Exception as exc:  # skip-on-error per feed
+                    failed.append(label)
                     log.warning(
                         "readme fetch failed; skipping",
                         extra={"run_id": ctx.run_id, "feed": label, "error": repr(exc)},
@@ -140,24 +150,26 @@ def _collect(ctx: StageContext) -> tuple[list[Job], dict[str, int]]:
                     per_source["jsearch"] = len(got)
                     log.info("sourced jsearch", extra={"run_id": ctx.run_id, "count": len(got)})
                 except Exception as exc:
+                    failed.append("jsearch")
                     log.warning(
                         "jsearch fetch failed; skipping",
                         extra={"run_id": ctx.run_id, "error": repr(exc)},
                     )
     finally:
         client.close()
-    return jobs, per_source
+    return jobs, per_source, failed
 
 
 def run(ctx: StageContext) -> StageResult:
     log.info("stage start", extra={"run_id": ctx.run_id, "stage": NAME})
+    failed: list[str] = []
     if ctx.settings.dry_run:
         jobs = _dry_run_jobs(ctx)
         per_source = {"dry_run_fixture": len(jobs)}
         log.info("dry-run: sourcing from bundled fixtures",
                  extra={"run_id": ctx.run_id, "count": len(jobs)})
     else:
-        jobs, per_source = _collect(ctx)
+        jobs, per_source, failed = _collect(ctx)
 
     # Dedupe within this run (a role can appear in several feeds).
     seen: set[str] = set()
@@ -177,12 +189,29 @@ def run(ctx: StageContext) -> StageResult:
 
     ctx.data["new_jobs"] = result.new
     ctx.data["jobs_total"] = len(deduped)
-    counts = {"jobs_sourced": len(deduped), "jobs_new": result.new_count}
+    counts = {
+        "jobs_sourced": len(deduped),
+        "jobs_new": result.new_count,
+        "sources_failed": len(failed),
+    }
+    # ok=False only when EVERY attempted source failed (per_source empty, failed
+    # non-empty) — a lone bad board token is expected/tolerated (per module
+    # docstring) and stays a plain WARNING; a persistent outage across the whole
+    # run (renamed token, feed moved, network down) is the thing worth flipping
+    # the run's status over.
+    ok = not (failed and not per_source)
+    if not ok:
+        log.error(
+            "every configured source failed this run",
+            extra={"run_id": ctx.run_id, "failed_sources": failed},
+        )
     log.info(
         "stage done",
         extra={"run_id": ctx.run_id, "stage": NAME, "per_source": per_source, **counts},
     )
-    return StageResult(name=NAME, counts=counts, notes=f"new={result.new_count}")
+    return StageResult(
+        name=NAME, counts=counts, notes=f"new={result.new_count}, failed={failed}", ok=ok,
+    )
 
 
 if __name__ == "__main__":

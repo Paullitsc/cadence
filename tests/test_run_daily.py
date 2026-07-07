@@ -50,7 +50,7 @@ def test_run_all_stages_offline_succeeds(offline_settings):
 def test_subset_runs_only_selected_stage(offline_settings):
     record = run_daily.run_pipeline(stages=["source"], settings=offline_settings)
     assert record.status == "success"
-    assert set(record.counts) == {"jobs_sourced", "jobs_new"}
+    assert set(record.counts) == {"jobs_sourced", "jobs_new", "sources_failed"}
 
 
 def test_unknown_stage_recorded_as_error(offline_settings):
@@ -71,3 +71,19 @@ def test_stage_failure_is_caught_and_skipped(monkeypatch, offline_settings):
     assert record.status == "partial"
     assert any("kaboom" in e for e in record.errors)
     assert record.counts["new_jobs_today"] == 0
+
+
+def test_degraded_stage_outcome_is_recorded_without_raising(monkeypatch, offline_settings):
+    """A stage that returns normally but reports ok=False (e.g. every source
+    failed without raising) must still surface as a run error — same as an
+    exception would — instead of being invisible because nothing raised."""
+
+    def degraded(ctx: StageContext) -> StageResult:
+        return StageResult(name="source", counts={}, notes="every source failed", ok=False)
+
+    monkeypatch.setitem(run_daily.REGISTRY, "source", degraded)
+    record = run_daily.run_pipeline(
+        stages=["source", "log_and_digest"], settings=offline_settings
+    )
+    assert record.status == "partial"
+    assert any("every source failed" in e for e in record.errors)

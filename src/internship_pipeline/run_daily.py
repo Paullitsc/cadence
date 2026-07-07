@@ -77,6 +77,15 @@ def run_pipeline(
                 "stage done",
                 extra={"run_id": run_id, "stage": name, "counts": result.counts},
             )
+            if not result.ok:
+                # Completed without raising but reported a degraded outcome (e.g.
+                # every configured source failed) — surface it the same as a raised
+                # exception, without aborting the run.
+                record.errors.append(f"{name}: {result.notes or 'stage reported ok=False'}")
+                log.warning(
+                    "stage completed with a degraded outcome",
+                    extra={"run_id": run_id, "stage": name, "notes": result.notes},
+                )
         except Exception as exc:  # skip-on-error: keep the run going
             record.errors.append(f"{name}: {exc!r}")
             log.exception("stage failed", extra={"run_id": run_id, "stage": name})

@@ -216,7 +216,16 @@ class RunRecord(BaseModel):
 
 @dataclasses.dataclass
 class StageResult:
-    """Return value of a stage's ``run`` function."""
+    """Return value of a stage's ``run`` function.
+
+    ``ok`` is distinct from raising: a stage that catches its own per-item
+    errors (e.g. one bad feed) still returns normally, so an exception alone
+    can't signal "this stage's OUTCOME was degraded". Set ``ok=False`` when a
+    stage completes but accomplished materially less than it should have
+    (e.g. every configured source failed) — ``run_pipeline`` records that in
+    ``RunRecord.errors`` the same as a raised exception, so it surfaces in the
+    run status without aborting the run.
+    """
 
     name: str
     counts: dict[str, int]
