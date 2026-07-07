@@ -99,6 +99,24 @@ def test_new_row_references_existing_rows_cv():
     assert plan.appends[0][COL_CV] == "same as row 2"
 
 
+def test_new_row_references_cv_of_row_outside_sync_batch():
+    """Cross-run: the row holding the link belongs to an app the human already
+    moved past pending (not in this batch) — its link comes via cv_links_by_key."""
+    shared = "https://drive/shared"
+    existing_row = [""] * len(HEADERS)
+    existing_row[COL_CV] = "CV"  # display value of the existing hyperlink
+    existing_row[COL_STATUS] = "submitted"  # human moved it on; app not re-synced
+    existing_row[COL_KEY] = "k1"
+    plan = plan_applications_upsert(
+        [HEADERS, existing_row],
+        [_app("k2", cv_drive_link=shared)],  # k1's app is NOT in the batch
+        prepared_date="2026-07-07",
+        cv_links_by_key={"k1": shared},
+    )
+    assert len(plan.appends) == 1
+    assert plan.appends[0][COL_CV] == "same as row 2"
+
+
 def test_rerun_with_no_changes_is_a_no_op():
     plan1 = plan_applications_upsert([HEADERS], [_app("k1")], prepared_date="2026-07-06")
     snapshot = [HEADERS, plan1.appends[0]]

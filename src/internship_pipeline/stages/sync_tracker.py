@@ -35,22 +35,29 @@ NAME = "sync_tracker"
 log = get_logger(__name__)
 
 
-def _collect_applications(ctx: StageContext) -> tuple[list[Application], dict[str, list[str]]]:
+def _collect_applications(
+    ctx: StageContext,
+) -> tuple[list[Application], dict[str, list[str]], dict[str, str]]:
     """This run's prepared applications first (freshest), then older pending ones.
 
     Also returns job locations by dedupe key — known only for this run's jobs (the
     Application row doesn't carry locations); older reconciled rows leave the cell
-    blank for the human.
+    blank for the human. The third value maps EVERY stored application's dedupe key
+    to its Drive CV link (any status), so the upsert can say "same as row N" even
+    when the row holding the link is past pending (human moved its Status on).
     """
     prepared = ctx.data.get("prepared", [])
     apps: list[Application] = [item.app for item in prepared]
     locations = {item.job.dedupe_key(): item.job.locations for item in prepared}
 
     seen = {a.dedupe_key for a in apps}
+    cv_links: dict[str, str] = {}
     storage = get_storage(ctx.settings)
     try:
-        for app in storage.list_applications(status="pending_review"):
-            if app.dedupe_key not in seen:
+        for app in storage.list_applications():
+            if app.cv_drive_link:
+                cv_links.setdefault(app.dedupe_key, app.cv_drive_link)
+            if app.status == "pending_review" and app.dedupe_key not in seen:
                 seen.add(app.dedupe_key)
                 apps.append(app)
     except Exception as exc:  # reconcile is best-effort; this run's rows still sync
@@ -60,7 +67,7 @@ def _collect_applications(ctx: StageContext) -> tuple[list[Application], dict[st
         )
     finally:
         storage.close()
-    return apps, locations
+    return apps, locations, cv_links
 
 
 def run(ctx: StageContext) -> StageResult:
@@ -75,7 +82,7 @@ def run(ctx: StageContext) -> StageResult:
             notes="tracker not configured",
         )
 
-    apps, locations_by_key = _collect_applications(ctx)
+    apps, locations_by_key, cv_links_by_key = _collect_applications(ctx)
     if not apps:
         log.info("no applications to sync", extra={"run_id": ctx.run_id})
         return StageResult(
@@ -98,6 +105,7 @@ def run(ctx: StageContext) -> StageResult:
         locations_by_key=locations_by_key,
         answers_gid=tab_ids.get(ANSWERS_TAB),
         answers_rows=answers_anchors,
+        cv_links_by_key=cv_links_by_key,
     )
     apply_plan(services.sheets, spreadsheet_id, APPLICATIONS_TAB, plan)
 

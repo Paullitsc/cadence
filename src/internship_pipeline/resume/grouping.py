@@ -72,14 +72,24 @@ def cluster_jobs(
     return clusters
 
 
+# Bump when the rendered CV's LAYOUT changes (e.g. the compact one-page design):
+# a cached CV embeds the design it was rendered with, so a layout change must
+# invalidate old entries or cache hits keep resurfacing the old-look PDFs.
+CV_LAYOUT_VERSION = "compact-v1"
+
+
 def cv_cache_key(bullet_ids: list[str], keywords: list[str]) -> str:
     """Stable cache key for one tailored CV: the tailoring input's identity.
 
     Selected bullet ids and keywords are treated as SETS (sorted, normalized) so
     retrieval-order jitter doesn't defeat the cache. Same bullets + same keywords
-    ⇒ same key ⇒ the stored CV is reused with no LLM call.
+    ⇒ same key ⇒ the stored CV is reused with no LLM call. The layout version is
+    salted in so a design change re-tailors (once per cluster) instead of reusing
+    stale-layout artifacts.
     """
     ids = ",".join(sorted({b.strip() for b in bullet_ids if b.strip()}))
     kws = ",".join(sorted({k.strip().lower() for k in keywords if k.strip()}))
-    digest = hashlib.sha256(f"bullets:{ids}|keywords:{kws}".encode("utf-8"))
+    digest = hashlib.sha256(
+        f"layout:{CV_LAYOUT_VERSION}|bullets:{ids}|keywords:{kws}".encode("utf-8")
+    )
     return digest.hexdigest()[:24]

@@ -48,6 +48,15 @@ def test_cv_cache_round_trip_and_upsert(tmp_path):
     assert store.get_cv_cache("abc").cv_drive_link == "https://drive/f"
 
 
+def test_list_cv_cache_returns_all_entries(tmp_path):
+    store = SQLiteStore(str(tmp_path / "t.db"))
+    assert store.list_cv_cache() == []
+    store.save_cv_cache(CvCacheEntry(cache_key="a", tailored_resume_yaml="cv: a"))
+    store.save_cv_cache(CvCacheEntry(cache_key="b", tailored_resume_yaml="cv: b"))
+    entries = store.list_cv_cache()
+    assert {e.cache_key for e in entries} == {"a", "b"}
+
+
 def test_pre_phase5_database_is_migrated_in_place(tmp_path):
     """Opening a DB whose tables predate Phase 5 adds the new columns via ALTER."""
     db = tmp_path / "old.db"

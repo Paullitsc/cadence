@@ -289,6 +289,22 @@ class SupabaseStore(Storage):
             pdf_path=row.get("pdf_path"),
         )
 
+    def list_cv_cache(self) -> list[CvCacheEntry]:
+        resp = self.client.get(
+            f"{self.base}/cv_cache", params={"select": "*", "order": "created_at.asc"}
+        )
+        resp.raise_for_status()
+        return [
+            CvCacheEntry(
+                cache_key=r["cache_key"],
+                tailored_resume_yaml=r.get("tailored_resume_yaml") or "",
+                cv_drive_link=r.get("cv_drive_link"),
+                drive_file_id=r.get("drive_file_id"),
+                pdf_path=r.get("pdf_path"),
+            )
+            for r in resp.json()
+        ]
+
     def save_cv_cache(self, entry: CvCacheEntry) -> None:
         resp = self.client.post(
             f"{self.base}/cv_cache",

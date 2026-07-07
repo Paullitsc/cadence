@@ -11,7 +11,7 @@ create table if not exists public.jobs (
     date_posted   text,                      -- raw feed value (epoch or ISO); parsed later
     active        boolean not null default true,
     source        text,                      -- e.g. "greenhouse:stripe", "Simplify"
-    source_feed   text,                      -- greenhouse | lever | ashby | simplify | jsearch
+    source_feed   text,                      -- greenhouse | lever | ashby | simplify | jsearch | github_readme
     first_seen_at timestamptz not null default now(),
     last_seen_at  timestamptz not null default now()
 );

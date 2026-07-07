@@ -73,6 +73,83 @@ def test_match_and_slice_noop_without_new_jobs(phase2_settings):
     assert result.counts == {"jobs_scored": 0, "applications_prepared": 0}
 
 
+class _CvCacheStub:
+    """Duck-typed stand-in for the three cache methods ``_cluster_cv`` uses."""
+
+    def __init__(self, entries):
+        self.entries = entries
+        self.saved = []
+
+    def get_cv_cache(self, cache_key):
+        return None  # force a key miss so the content-dedupe scan runs
+
+    def list_cv_cache(self):
+        return self.entries
+
+    def save_cv_cache(self, entry):
+        self.saved.append(entry)
+
+
+def test_identical_cv_content_reuses_twin_artifact(phase2_settings, monkeypatch):
+    """A byte-identical CV cached under a DIFFERENT key (different keywords) must
+    reuse the twin's Drive link/PDF instead of rendering + uploading a duplicate."""
+    from internship_pipeline.models import CvCacheEntry
+    from internship_pipeline.resume import (
+        all_bullets,
+        build_rendercv_cv,
+        get_embedder,
+        load_master_resume,
+        score_job,
+        to_yaml,
+    )
+    from internship_pipeline.resume.matching import job_text
+    from internship_pipeline.resume.tailoring import tailor_resume
+
+    s = phase2_settings
+    resume = load_master_resume(s.master_resume_file)
+    bullets = all_bullets(resume)
+    embedder = get_embedder(s)
+    vectors = embedder.embed([b.searchable_text() for b in bullets])
+    job = Job(company_name="DataCorp", title="Backend Intern", url="https://x/twin",
+              description="Build data pipelines in Python and Kafka on the backend team.")
+    match = score_job(job, bullets, vectors, embedder, resume=resume, top_k=s.top_k_bullets)
+
+    # Pre-compute the exact YAML _cluster_cv will produce (deterministic, no LLM)
+    # and seed the cache with it under an unrelated key.
+    tailored = tailor_resume(
+        jd_text=job_text(job), keywords=match.keywords, candidate_bullets=match.top_bullets,
+        resume=resume, complete=None, human_review=False, max_bullets=s.max_tailored_bullets,
+    )
+    twin_yaml = to_yaml(build_rendercv_cv(resume, tailored.bullets))
+    twin = CvCacheEntry(cache_key="other-key", tailored_resume_yaml=twin_yaml,
+                        cv_drive_link="https://drive/twin", pdf_path="/old/twin.pdf")
+    storage = _CvCacheStub([twin])
+
+    def _no_render(*a, **k):
+        raise AssertionError("identical CV must not be re-rendered")
+
+    monkeypatch.setattr(match_and_slice, "write_and_render", _no_render)
+    cv = match_and_slice._cluster_cv(
+        job, match, resume=resume, complete=None, settings=s, storage=storage, drive=None
+    )
+    assert cv.drive_link == "https://drive/twin"
+    assert cv.pdf_path == "/old/twin.pdf"
+    assert cv.from_cache is False  # the LLM/tailoring DID run; only render+upload saved
+    # The twin's artifacts were re-cached under this job's own key.
+    assert storage.saved and storage.saved[0].cv_drive_link == "https://drive/twin"
+
+
+def test_twin_without_drive_link_not_reused_when_drive_configured():
+    """With Drive on, a link-less twin must fall through to a fresh render+upload."""
+    from internship_pipeline.models import CvCacheEntry
+
+    linkless = CvCacheEntry(cache_key="k", tailored_resume_yaml="cv: x", pdf_path="/x.pdf")
+    storage = _CvCacheStub([linkless])
+    assert match_and_slice._identical_cached_cv(storage, "cv: x", require_drive_link=True) is None
+    hit = match_and_slice._identical_cached_cv(storage, "cv: x", require_drive_link=False)
+    assert hit is linkless
+
+
 def test_application_cap_prepares_only_best_fit(phase2_settings):
     """Cost guard: all jobs are scored, but only the top-N by fit are prepared."""
     phase2_settings = phase2_settings.model_copy(update={"max_applications_per_run": 1})

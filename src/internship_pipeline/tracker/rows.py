@@ -152,6 +152,7 @@ def plan_applications_upsert(
     locations_by_key: dict[str, list[str]] | None = None,
     answers_gid: int | None = None,
     answers_rows: dict[str, int] | None = None,
+    cv_links_by_key: dict[str, str] | None = None,
 ) -> SheetPlan:
     """Diff ``apps`` against the current sheet snapshot (``existing`` includes the
     header row; sheet row numbers are therefore ``index + 1``).
@@ -163,9 +164,14 @@ def plan_applications_upsert(
 
     ``locations_by_key`` supplies job locations (the Application row doesn't carry
     them; the sync stage joins them in from the jobs it has on hand).
+    ``cv_links_by_key`` supplies Drive links for sheet rows whose app is NOT in this
+    sync batch (e.g. the human already moved its Status past pending) — without it a
+    new job reusing an older row's CV would repeat the link instead of saying
+    ``same as row N``.
     """
     locations_by_key = locations_by_key or {}
     answers_rows = answers_rows or {}
+    cv_links_by_key = cv_links_by_key or {}
     by_key = {a.dedupe_key: a for a in apps}
 
     key_to_row: dict[str, int] = {}
@@ -175,11 +181,14 @@ def plan_applications_upsert(
             key_to_row.setdefault(key, idx)
 
     # Where each Drive link already lives, so grouped jobs can say "same as row N".
+    # Sheet order wins: the first (topmost) row holding a link is the one later
+    # rows point at.
     link_to_row: dict[str, int] = {}
     for key, row_number in key_to_row.items():
         app = by_key.get(key)
-        if app and (app.cv_drive_link or "").strip():
-            link_to_row.setdefault(app.cv_drive_link.strip(), row_number)
+        link = (app.cv_drive_link if app else cv_links_by_key.get(key)) or ""
+        if link.strip():
+            link_to_row.setdefault(link.strip(), row_number)
 
     plan = SheetPlan()
     next_row = len(existing) + 1  # first appended row lands here

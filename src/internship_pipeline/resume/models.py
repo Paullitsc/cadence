@@ -92,5 +92,9 @@ class BulletRef(BaseModel):
     parent: str  # company or project name (for regrouping in the rendered CV)
 
     def searchable_text(self) -> str:
-        """Text used for embedding + grounding (bullet text plus its tags)."""
-        return f"{self.text} {' '.join(self.tags)}".strip()
+        """Text used for embedding + grounding (bullet text plus its tags).
+
+        Markdown ``**bold**`` markers are stripped so hand-bolded keywords in
+        ``master_resume.yaml`` don't perturb embeddings or token matching.
+        """
+        return f"{self.text.replace('**', '')} {' '.join(self.tags)}".strip()

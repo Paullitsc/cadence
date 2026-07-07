@@ -96,6 +96,11 @@ class Storage(ABC):
     def save_cv_cache(self, entry: CvCacheEntry) -> None:
         """Upsert a ``cv_cache`` row (keyed by ``cache_key``)."""
 
+    @abstractmethod
+    def list_cv_cache(self) -> list[CvCacheEntry]:
+        """All cached CVs — small table (one row per unique CV), scanned for
+        content-identical duplicates so one rendered CV keeps one Drive link."""
+
     def close(self) -> None:  # optional; overridden where a client is held open
         pass
 

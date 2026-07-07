@@ -13,6 +13,14 @@ def test_defaults():
     assert s.anthropic_api_key is None
 
 
+def test_source_url_lists_parse_comma_separated(monkeypatch):
+    monkeypatch.setenv("EXTRA_LISTINGS_URLS", " https://a/l.json , https://b/l.json ,")
+    monkeypatch.setenv("GITHUB_README_URLS", "")
+    s = Settings(_env_file=None)
+    assert s.extra_listings_url_list == ["https://a/l.json", "https://b/l.json"]
+    assert s.github_readme_url_list == []  # blank -> no feeds, not [""]
+
+
 def test_env_override(monkeypatch):
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
     monkeypatch.setenv("STORAGE_BACKEND", "supabase")

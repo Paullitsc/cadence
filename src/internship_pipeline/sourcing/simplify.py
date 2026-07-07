@@ -6,6 +6,10 @@ Raw path confirmed against the live repo on 2026-06-29:
 blueprint's fields plus extras: company_name, title, locations, url, date_posted,
 active, source (+ id, terms, degrees, sponsorship, is_visible, ...).
 
+Also reused for same-format forks of the SimplifyJobs tooling (``EXTRA_LISTINGS_URLS``,
+e.g. vanshb03/Summer2027-Internships — schema confirmed identical on 2026-07-07);
+each row's own ``source`` field keeps the feeds distinguishable.
+
 Diffing against what's stored is handled by the jobs-table dedupe (stable hash);
 here we just normalize and keep active roles so only NEW active ones surface.
 """

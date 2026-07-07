@@ -27,11 +27,11 @@ jobs:
       # --- Phase 2: résumé matching / tailoring ---
       ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL || 'claude-haiku-4-5' }}
       ANTHROPIC_MAX_TOKENS: ${{ vars.ANTHROPIC_MAX_TOKENS || '2048' }}
-      FIT_SCORE_THRESHOLD: ${{ vars.FIT_SCORE_THRESHOLD || '0.30' }}
+      FIT_SCORE_THRESHOLD: ${{ vars.FIT_SCORE_THRESHOLD || '0.25' }}
       HIGH_PRIORITY_THRESHOLD: ${{ vars.HIGH_PRIORITY_THRESHOLD || '0.55' }}
       TOP_K_BULLETS: ${{ vars.TOP_K_BULLETS || '8' }}
       MAX_TAILORED_BULLETS: ${{ vars.MAX_TAILORED_BULLETS || '10' }}
-      MAX_APPLICATIONS_PER_RUN: ${{ vars.MAX_APPLICATIONS_PER_RUN || '15' }}
+      MAX_APPLICATIONS_PER_RUN: ${{ vars.MAX_APPLICATIONS_PER_RUN || '40' }}
       TARGET_COMPANIES: ${{ vars.TARGET_COMPANIES || '' }}
       # --- Phase 3: cold outreach (drafting only — sending is always manual) ---
       ENABLE_HUNTER: ${{ vars.ENABLE_HUNTER || 'false' }}

@@ -64,6 +64,30 @@ def get_json(
     return _do()
 
 
+def get_text(
+    client: httpx.Client,
+    url: str,
+    *,
+    params: Optional[dict[str, Any]] = None,
+    headers: Optional[dict[str, str]] = None,
+    max_retries: int = 3,
+) -> str:
+    """GET ``url`` and return the body as text, retrying transient failures."""
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(max(1, max_retries)),
+        wait=wait_exponential(multiplier=0.5, min=0.5, max=8),
+        retry=retry_if_exception(is_retryable),
+    )
+    def _do() -> str:
+        resp = client.get(url, params=params, headers=headers)
+        resp.raise_for_status()
+        return resp.text
+
+    return _do()
+
+
 def post_json(
     client: httpx.Client,
     url: str,

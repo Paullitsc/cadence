@@ -81,6 +81,24 @@ class _ClusterCv:
     from_cache: bool = False
 
 
+def _identical_cached_cv(
+    storage, yaml_text: str, *, require_drive_link: bool
+) -> Optional[CvCacheEntry]:
+    """A cached CV whose YAML is byte-identical to ``yaml_text`` and that still has
+    a reusable artifact. With Drive configured, only a twin that already carries a
+    Drive link counts (a link-less twin falls through to a fresh render + upload).
+    Best-effort: scan failure → None."""
+    try:
+        for entry in storage.list_cv_cache():
+            if entry.tailored_resume_yaml != yaml_text:
+                continue
+            if entry.cv_drive_link or (not require_drive_link and entry.pdf_path):
+                return entry
+    except Exception as exc:
+        log.warning("cv cache scan failed; rendering fresh", extra={"error": repr(exc)})
+    return None
+
+
 def _cluster_cv(job: Job, match, *, resume, complete, settings, storage, drive) -> _ClusterCv:
     """Produce the cluster's CV: cache hit → reuse; miss → tailor + render + upload.
 
@@ -125,6 +143,40 @@ def _cluster_cv(job: Job, match, *, resume, complete, settings, storage, drive) 
         max_bullets=s.max_tailored_bullets,
     )
     cv_doc = build_rendercv_cv(resume, tailored.bullets)
+    yaml_text = to_yaml(cv_doc)
+
+    # Content dedupe: different cache keys (e.g. different JD keyword sets) can still
+    # tailor to a byte-identical CV. Reuse the twin's rendered PDF + Drive link instead
+    # of minting a duplicate Drive file — the sheet then shows "same as row N", not a
+    # second link to the same document. (The LLM call already happened; this saves the
+    # render + upload and keeps one artifact per unique CV.)
+    twin = _identical_cached_cv(storage, yaml_text, require_drive_link=drive is not None)
+    if twin is not None:
+        log.info(
+            "identical CV content; reusing existing artifact",
+            extra={"company": job.company_name, "twin_key": twin.cache_key},
+        )
+        try:
+            storage.save_cv_cache(
+                CvCacheEntry(
+                    cache_key=key,
+                    tailored_resume_yaml=yaml_text,
+                    cv_drive_link=twin.cv_drive_link,
+                    drive_file_id=twin.drive_file_id,
+                    pdf_path=twin.pdf_path,
+                )
+            )
+        except Exception as exc:
+            log.warning("cv cache write failed", extra={"error": repr(exc)})
+        return _ClusterCv(
+            yaml_text=yaml_text,
+            pdf_path=twin.pdf_path,
+            artifact_path=twin.pdf_path,
+            drive_link=twin.cv_drive_link,
+            used_llm=tailored.used_llm,
+            llm_review_flag=tailored.human_review,
+        )
+
     yaml_path, pdf_path = write_and_render(cv_doc, s.resume_output_dir, job.dedupe_key())
 
     drive_link = None
@@ -134,7 +186,6 @@ def _cluster_cv(job: Job, match, *, resume, complete, settings, storage, drive) 
         if uploaded is not None:
             drive_link, drive_file_id = uploaded.web_view_link, uploaded.file_id
 
-    yaml_text = to_yaml(cv_doc)
     try:
         storage.save_cv_cache(
             CvCacheEntry(

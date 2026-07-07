@@ -24,6 +24,7 @@ def offline_settings(tmp_path) -> Settings:
         companies_file=str(empty),
         enable_simplify=False,
         enable_jsearch=False,
+        enable_github_readme=False,
         digest_dir=str(tmp_path / "digests"),
     )
 

@@ -5,7 +5,7 @@ from pathlib import Path
 from internship_pipeline.resume.loader import all_bullets, load_master_resume
 from internship_pipeline.resume.matching import content_tokens, extract_keywords
 from internship_pipeline.resume.rendercv import build_rendercv_cv, to_yaml, write_and_render
-from internship_pipeline.resume.tailoring import enforce_grounding, tailor_resume
+from internship_pipeline.resume.tailoring import bold_keywords, enforce_grounding, tailor_resume
 
 FIXTURE = str(Path(__file__).parent / "fixtures" / "master_resume_sample.yaml")
 
@@ -36,14 +36,37 @@ def test_enforce_grounding_rejects_ungrounded_and_keeps_grounded():
     assert enforce_grounding("Built Rust pipeline", "orig", vocab) == "orig"
 
 
-def test_deterministic_select_only_keeps_bullets_verbatim():
+def test_deterministic_select_only_keeps_bullet_words_verbatim():
+    """Words never change in select-only mode; keyword bolding only adds ``**``."""
     resume, bullets, keywords = _setup()
     result = tailor_resume(
         jd_text=JD, keywords=keywords, candidate_bullets=bullets,
         resume=resume, complete=None, max_bullets=10,
     )
     assert result.used_llm is False
-    assert [tb.text for tb in result.bullets] == [b.text for b in bullets]
+    assert [tb.text.replace("**", "") for tb in result.bullets] == [b.text for b in bullets]
+    # JD keywords present in the bullets came back bolded.
+    assert any("**" in tb.text for tb in result.bullets)
+
+
+def test_bold_keywords_basic_and_case_preserving():
+    assert bold_keywords("Built Python pipelines", ["python"]) == "Built **Python** pipelines"
+    # multi-word keyword wins over its parts (longest first)
+    out = bold_keywords("Applied machine learning models", ["learning", "machine learning"])
+    assert out == "Applied **machine learning** models"
+
+
+def test_bold_keywords_never_double_bolds_or_touches_links():
+    assert bold_keywords("Used **Python** daily", ["python"]) == "Used **Python** daily"
+    text = "See [python demo](https://x.dev/python) for details"
+    assert bold_keywords(text, ["python"]) == text  # link text/URL untouched
+    # no partial-word matches ("java" inside "javascript")
+    assert bold_keywords("Wrote JavaScript apps", ["java"]) == "Wrote JavaScript apps"
+
+
+def test_bold_keywords_handles_tech_punctuation():
+    assert bold_keywords("Shipped C++ services", ["c++"]) == "Shipped **C++** services"
+    assert bold_keywords("No match here", []) == "No match here"
 
 
 def test_tailoring_never_introduces_ungrounded_tokens():
@@ -77,8 +100,9 @@ def test_tailoring_never_introduces_ungrounded_tokens():
         assert forbidden not in out_tokens
 
     # The fabricated bullet fell back to its verbatim original; the honest one passed.
-    assert result.bullets[0].text == bullets[0].text
-    assert result.bullets[1].text == bullets[1].text
+    # (Keyword bolding may add ``**`` but never changes the words.)
+    assert result.bullets[0].text.replace("**", "") == bullets[0].text
+    assert result.bullets[1].text.replace("**", "") == bullets[1].text
     assert result.human_review is True
 
 

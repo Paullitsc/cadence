@@ -143,7 +143,8 @@ def deterministic_subject(job: Job, resume: MasterResume) -> str:
 def _relevant_lines(top_bullets: list[BulletRef], limit: int) -> list[str]:
     lines = []
     for ref in top_bullets[:limit]:
-        lines.append(f"- {ref.text} ({ref.parent})")
+        # Outreach is plain text — résumé Markdown bold would show as literal `**`.
+        lines.append(f"- {ref.text.replace('**', '')} ({ref.parent})")
     return lines
 
 
@@ -197,7 +198,8 @@ def build_user_text(job: Job, keywords: list[str], top_bullets: list[BulletRef],
     if contact.name:
         lines.append(f"RECIPIENT: {contact.name}" + (f" ({contact.title})" if contact.title else ""))
     lines += ["", "CANDIDATE'S MOST RELEVANT REAL BULLETS (reference only these):"]
-    lines += [f"- {ref.text} [{ref.parent}]" for ref in top_bullets]
+    # Plain-text channel: strip résumé Markdown bold so the LLM never echoes `**`.
+    lines += [f"- {ref.text.replace('**', '')} [{ref.parent}]" for ref in top_bullets]
     return "\n".join(lines)
 
 

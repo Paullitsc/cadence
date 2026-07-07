@@ -41,10 +41,11 @@ def build_system_blocks(resume: MasterResume) -> list[dict]:
         lines.append("SKILLS: " + ", ".join(resume.skills.all()))
     for exp in resume.experiences:
         lines.append(f"EXPERIENCE: {exp.role} at {exp.company}")
-        lines.extend(f"  - {b.text}" for b in exp.bullets)
+        # Prose channel: strip résumé Markdown bold so answers never echo `**`.
+        lines.extend(f"  - {b.text.replace('**', '')}" for b in exp.bullets)
     for proj in resume.projects:
         lines.append(f"PROJECT: {proj.name}")
-        lines.extend(f"  - {b.text}" for b in proj.bullets)
+        lines.extend(f"  - {b.text.replace('**', '')}" for b in proj.bullets)
     profile = "\n".join(lines)
     return [
         {"type": "text", "text": SYSTEM_INSTRUCTIONS},

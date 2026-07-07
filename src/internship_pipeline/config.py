@@ -39,6 +39,25 @@ class Settings(BaseSettings):
         "https://raw.githubusercontent.com/SimplifyJobs/"
         "Summer2026-Internships/dev/.github/scripts/listings.json"
     )
+    # Extra SimplifyJobs-FORMAT listings.json feeds (comma-separated raw URLs),
+    # fetched with the same parser and gated by ENABLE_SIMPLIFY. Default:
+    # vanshb03/Summer2027-Internships, a fork of the SimplifyJobs tooling — path,
+    # branch and row schema confirmed against the live repo on 2026-07-07.
+    extra_listings_urls: str = (
+        "https://raw.githubusercontent.com/vanshb03/"
+        "Summer2027-Internships/dev/.github/scripts/listings.json"
+    )
+    # Curated internship repos that publish NO JSON feed — just a markdown table in
+    # the README (parsed by sourcing/github_readme.py). Comma-separated raw URLs.
+    # Default: negarprh's Canadian tech internships — the 2026 list plus the 2027
+    # list kept in the same repo; table format confirmed live on 2026-07-07.
+    enable_github_readme: bool = True
+    github_readme_urls: str = (
+        "https://raw.githubusercontent.com/negarprh/"
+        "Canadian-Tech-Internships-2026/main/README.md,"
+        "https://raw.githubusercontent.com/negarprh/"
+        "Canadian-Tech-Internships-2026/main/README-2027.md"
+    )
     # Optional tertiary aggregator (JSearch / RapidAPI). Off by default; the free
     # tier is hard-capped at 200 req/month, so keep page counts tiny.
     enable_jsearch: bool = False
@@ -69,13 +88,13 @@ class Settings(BaseSettings):
     # Retrieval / scoring knobs (tune to taste — see ACTIONS_FOR_PAUL.md).
     top_k_bullets: int = 8
     max_tailored_bullets: int = 10  # keep the tailored résumé to ~one page
-    fit_score_threshold: float = 0.30  # below this, don't prepare an application
+    fit_score_threshold: float = 0.25  # below this, don't prepare an application
     high_priority_threshold: float = 0.55  # at/above this, flag human_review
     # Cost/volume guard: prepare at most this many applications per run, BEST-fit
     # first. Scoring (embeddings, local) still covers every new job; only the top-N
     # go through LLM tailoring + PDF render + answer/outreach drafting. Protects the
     # first live run (~1,200+ new jobs on day one) from an LLM/render blowout.
-    max_applications_per_run: int = 15
+    max_applications_per_run: int = 40
     # Comma-separated company names that always count as high-priority (dual-trigger
     # favorable-role flag). Parsed via ``target_company_set``.
     target_companies: str = ""
@@ -189,6 +208,16 @@ class Settings(BaseSettings):
         return {c.strip().lower() for c in self.target_companies.split(",") if c.strip()}
 
     @property
+    def extra_listings_url_list(self) -> list[str]:
+        """Extra SimplifyJobs-format feed URLs (comma-separated → list)."""
+        return [u.strip() for u in self.extra_listings_urls.split(",") if u.strip()]
+
+    @property
+    def github_readme_url_list(self) -> list[str]:
+        """Raw README URLs to parse for internship tables (comma-separated → list)."""
+        return [u.strip() for u in self.github_readme_urls.split(",") if u.strip()]
+
+    @property
     def gmail_scopes(self) -> list[str]:
         """All Gmail scopes the app uses (send for outreach, readonly for reply scan).
 
@@ -234,6 +263,7 @@ def build_dry_run_settings(*, work_dir: Optional[str] = None) -> Settings:
         embedding_backend="hashing",  # deterministic, no model download
         enable_simplify=False,
         enable_jsearch=False,
+        enable_github_readme=False,
         enable_hunter=False,
         enable_apollo=False,
         anthropic_api_key=None,  # deterministic tailoring / no answer drafting

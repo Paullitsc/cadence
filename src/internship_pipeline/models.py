@@ -25,8 +25,9 @@ class JobSource(str, Enum):
     GREENHOUSE = "greenhouse"
     LEVER = "lever"
     ASHBY = "ashby"
-    SIMPLIFY = "simplify"  # SimplifyJobs listings.json
+    SIMPLIFY = "simplify"  # SimplifyJobs-format listings.json (incl. forks, e.g. vanshb03)
     JSEARCH = "jsearch"  # RapidAPI aggregator (optional)
+    GITHUB_README = "github_readme"  # curated README internship tables (no JSON feed)
 
 
 def normalize_url(url: str) -> str:

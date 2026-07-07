@@ -76,7 +76,9 @@ def test_llm_mangled_link_falls_back_verbatim_end_to_end():
         jd_text="Backend data pipelines in Python.", keywords=["python"],
         candidate_bullets=bullets, resume=resume, complete=fake_complete,
     )
-    assert result.bullets[0].text == linked.text  # verbatim, link intact
+    # verbatim words + intact link; keyword bolding may add ** but never words
+    assert result.bullets[0].text.replace("**", "") == linked.text
+    assert "[code](https://github.com/testcand/pipe)" in result.bullets[0].text
 
 
 # --- one PDF per job (no overwrite) --------------------------------------------- #

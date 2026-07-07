@@ -34,6 +34,35 @@ from .tailoring import TailoredBullet
 
 log = get_logger(__name__)
 
+# Compact one-page design. Every key verified against the installed rendercv 2.8
+# schema (rendercv.schema.models.design.classic_theme.ClassicTheme). The classic
+# theme stays single-column real text (Typst), so an ATS/AI screener parses it the
+# same as the roomy default — only margins, font size and vertical spacing shrink.
+# Footer ("Name — 1/2") and top note ("Last updated ...") are dropped: noise on a
+# one-pager.
+_COMPACT_DESIGN: dict = {
+    "theme": "classic",
+    "page": {
+        "top_margin": "0.45in",
+        "bottom_margin": "0.45in",
+        "left_margin": "0.55in",
+        "right_margin": "0.55in",
+        "show_footer": False,
+        "show_top_note": False,
+    },
+    "typography": {
+        "line_spacing": "0.5em",
+        "font_size": {"body": "9.5pt", "name": "20pt", "section_titles": "1.2em"},
+    },
+    "header": {
+        "space_below_name": "0.25cm",
+        "space_below_connections": "0.35cm",
+        "connections": {"space_between_connections": "0.3cm"},
+    },
+    "section_titles": {"space_above": "0.25cm", "space_below": "0.15cm"},
+    "sections": {"space_between_regular_entries": "0.55em"},
+}
+
 
 def _username(url: Optional[str]) -> Optional[str]:
     if not url:
@@ -141,7 +170,7 @@ def build_rendercv_cv(resume: MasterResume, tailored: list[TailoredBullet]) -> d
         cv["social_networks"] = socials
     cv["sections"] = sections
 
-    return {"cv": cv, "design": {"theme": "classic"}}
+    return {"cv": cv, "design": _COMPACT_DESIGN}
 
 
 def to_yaml(cv_doc: dict) -> str:

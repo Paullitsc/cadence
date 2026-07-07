@@ -384,6 +384,20 @@ class SQLiteStore(Storage):
             pdf_path=row["pdf_path"],
         )
 
+    def list_cv_cache(self) -> list[CvCacheEntry]:
+        with self._conn() as conn:
+            rows = conn.execute("SELECT * FROM cv_cache ORDER BY created_at").fetchall()
+        return [
+            CvCacheEntry(
+                cache_key=r["cache_key"],
+                tailored_resume_yaml=r["tailored_resume_yaml"],
+                cv_drive_link=r["cv_drive_link"],
+                drive_file_id=r["drive_file_id"],
+                pdf_path=r["pdf_path"],
+            )
+            for r in rows
+        ]
+
     def save_cv_cache(self, entry: CvCacheEntry) -> None:
         with self._conn() as conn:
             conn.execute(

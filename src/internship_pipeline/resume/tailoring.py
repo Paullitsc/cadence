@@ -10,6 +10,12 @@ anti-hallucination regression test asserts.
 
 When no API key is configured, tailoring degrades to deterministic "select-only":
 the top-K bullets are kept verbatim in fit order. Same guardrail, same output shape.
+
+Keyword bolding: JD keywords found in a bullet are wrapped in Markdown ``**bold**``
+(rendered bold in the PDF). The LLM is instructed to do it (and to preserve any
+bold already written in ``master_resume.yaml``), and ``bold_keywords`` runs as a
+deterministic post-pass in both paths so the emphasis is guaranteed either way —
+it only ever adds asterisks, never words, so grounding is unaffected.
 """
 
 from __future__ import annotations
@@ -37,7 +43,11 @@ SYSTEM_INSTRUCTIONS = (
     "3. Do not merge two bullets into one. One selected id -> one output bullet.\n"
     "4. If a bullet contains a Markdown link [text](url), keep the link EXACTLY as "
     "written — same text, same URL. Never drop, alter, or add links.\n"
-    "5. Prefer the bullets most relevant to the job. Return at most the requested "
+    "5. Emphasis: keep any existing Markdown **bold** in a bullet exactly where it "
+    "is. Additionally, wrap in **bold** the words/phrases already in the bullet that "
+    "literally match the extracted keywords. Bolding is formatting ONLY — never add, "
+    "drop, or reword anything to force a keyword match.\n"
+    "6. Prefer the bullets most relevant to the job. Return at most the requested "
     "number, ordered strongest first.\n\n"
     'Respond with ONLY a JSON object of the form: {"selected": [{"id": "<id>", '
     '"text": "<final bullet text>"}], "human_review": <true|false>}. No prose.'
@@ -46,10 +56,46 @@ SYSTEM_INSTRUCTIONS = (
 # Markdown [text](url) — the link syntax RenderCV turns into a clickable PDF link.
 _MD_LINK_RE = re.compile(r"\[[^\]]+\]\(([^)\s]+)\)")
 
+# Spans keyword-bolding must not touch: existing **bold** and [text](url) links.
+_PROTECTED_SPAN_RE = re.compile(r"\*\*.+?\*\*|\[[^\]]*\]\([^)\s]*\)")
+
 
 def markdown_link_urls(text: str) -> set[str]:
     """The set of URLs carried by Markdown links in ``text``."""
     return set(_MD_LINK_RE.findall(text or ""))
+
+
+def bold_keywords(text: str, keywords: list[str]) -> str:
+    """Wrap JD-keyword occurrences in ``text`` in Markdown ``**bold**``.
+
+    Presentation only — the words themselves never change, so grounding is
+    unaffected (asterisks are not content tokens). Matching is case-insensitive
+    but keeps the bullet's original casing; longest keyword wins ("machine
+    learning" beats "learning"); existing ``**bold**`` spans and Markdown links
+    are left untouched, and the lookarounds never produce ``***`` runs.
+
+    Runs as a deterministic post-pass in BOTH tailoring paths, so keyword bolding
+    is guaranteed even when the LLM ignores its formatting instruction.
+    """
+    kws = sorted({k.strip() for k in keywords if k and k.strip()}, key=len, reverse=True)
+    if not text or not kws:
+        return text
+    pattern = re.compile(
+        r"(?<![\w*])(" + "|".join(re.escape(k) for k in kws) + r")(?![\w*])",
+        re.IGNORECASE,
+    )
+
+    def _bold(segment: str) -> str:
+        return pattern.sub(r"**\1**", segment)
+
+    out: list[str] = []
+    last = 0
+    for m in _PROTECTED_SPAN_RE.finditer(text):
+        out.append(_bold(text[last : m.start()]))
+        out.append(m.group(0))
+        last = m.end()
+    out.append(_bold(text[last:]))
+    return "".join(out)
 
 
 @dataclass
@@ -160,10 +206,17 @@ def tailor_resume(
     by_id = {ref.id: ref for ref in candidate_bullets}
     vocab = _input_vocab(jd_text, keywords, candidate_bullets)
 
+    def _verbatim(refs: list[BulletRef]) -> list[TailoredBullet]:
+        # Words verbatim; keyword bolding is a presentation-only post-pass.
+        return [TailoredBullet(ref=r, text=bold_keywords(r.text, keywords)) for r in refs]
+
     if complete is None:
         # Deterministic select-only: keep the (already fit-ordered) bullets verbatim.
-        chosen = [TailoredBullet(ref=ref, text=ref.text) for ref in candidate_bullets[:max_bullets]]
-        return TailorResult(bullets=chosen, human_review=human_review, used_llm=False)
+        return TailorResult(
+            bullets=_verbatim(candidate_bullets[:max_bullets]),
+            human_review=human_review,
+            used_llm=False,
+        )
 
     system_blocks = build_system_blocks(resume)
     user_text = build_user_text(jd_text, keywords, candidate_bullets, max_bullets)
@@ -172,8 +225,11 @@ def tailor_resume(
     selected = data.get("selected") if isinstance(data, dict) else None
     if not isinstance(selected, list):
         log.warning("LLM returned no usable selection; falling back to verbatim top bullets")
-        chosen = [TailoredBullet(ref=ref, text=ref.text) for ref in candidate_bullets[:max_bullets]]
-        return TailorResult(bullets=chosen, human_review=human_review, used_llm=True)
+        return TailorResult(
+            bullets=_verbatim(candidate_bullets[:max_bullets]),
+            human_review=human_review,
+            used_llm=True,
+        )
 
     out: list[TailoredBullet] = []
     seen: set[str] = set()
@@ -186,12 +242,12 @@ def tailor_resume(
             continue
         seen.add(rid)
         text = enforce_grounding(str(item.get("text", ref.text)), ref.text, vocab)
-        out.append(TailoredBullet(ref=ref, text=text))
+        out.append(TailoredBullet(ref=ref, text=bold_keywords(text, keywords)))
         if len(out) >= max_bullets:
             break
 
     if not out:  # nothing usable came back — keep the résumé non-empty
-        out = [TailoredBullet(ref=ref, text=ref.text) for ref in candidate_bullets[:max_bullets]]
+        out = _verbatim(candidate_bullets[:max_bullets])
 
     llm_flag = bool(data.get("human_review")) if isinstance(data, dict) else False
     return TailorResult(bullets=out, human_review=human_review or llm_flag, used_llm=True)
