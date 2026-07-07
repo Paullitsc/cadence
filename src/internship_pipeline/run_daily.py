@@ -63,52 +63,57 @@ def run_pipeline(
     record = RunRecord(run_id=run_id, started_at=datetime.now(timezone.utc))
 
     log.info("run start", extra={"run_id": run_id, "stages": names})
-    for name in names:
-        fn = REGISTRY.get(name)
-        if fn is None:
-            record.errors.append(f"unknown stage: {name}")
-            log.error("unknown stage", extra={"run_id": run_id, "stage": name})
-            continue
-        try:
-            result = fn(ctx)
-            for key, value in result.counts.items():
-                record.counts[key] = record.counts.get(key, 0) + value
-            log.info(
-                "stage done",
-                extra={"run_id": run_id, "stage": name, "counts": result.counts},
-            )
-            if not result.ok:
-                # Completed without raising but reported a degraded outcome (e.g.
-                # every configured source failed) — surface it the same as a raised
-                # exception, without aborting the run.
-                record.errors.append(f"{name}: {result.notes or 'stage reported ok=False'}")
-                log.warning(
-                    "stage completed with a degraded outcome",
-                    extra={"run_id": run_id, "stage": name, "notes": result.notes},
-                )
-        except Exception as exc:  # skip-on-error: keep the run going
-            record.errors.append(f"{name}: {exc!r}")
-            log.exception("stage failed", extra={"run_id": run_id, "stage": name})
-
-    record.finished_at = datetime.now(timezone.utc)
-    if names and len(record.errors) >= len(names):
-        record.status = "failed"
-    elif record.errors:
-        record.status = "partial"
-    else:
-        record.status = "success"
-
-    if persist:
-        try:
-            from .storage import get_storage
-
-            storage = get_storage(settings)
+    try:
+        for name in names:
+            fn = REGISTRY.get(name)
+            if fn is None:
+                record.errors.append(f"unknown stage: {name}")
+                log.error("unknown stage", extra={"run_id": run_id, "stage": name})
+                continue
             try:
-                storage.record_run(record)
-            finally:
-                storage.close()
-        except Exception as exc:  # observability must not break the run
-            log.warning("failed to persist run record", extra={"run_id": run_id, "error": repr(exc)})
+                result = fn(ctx)
+                for key, value in result.counts.items():
+                    record.counts[key] = record.counts.get(key, 0) + value
+                log.info(
+                    "stage done",
+                    extra={"run_id": run_id, "stage": name, "counts": result.counts},
+                )
+                if not result.ok:
+                    # Completed without raising but reported a degraded outcome (e.g.
+                    # every configured source failed) — surface it the same as a
+                    # raised exception, without aborting the run.
+                    record.errors.append(f"{name}: {result.notes or 'stage reported ok=False'}")
+                    log.warning(
+                        "stage completed with a degraded outcome",
+                        extra={"run_id": run_id, "stage": name, "notes": result.notes},
+                    )
+            except Exception as exc:  # skip-on-error: keep the run going
+                record.errors.append(f"{name}: {exc!r}")
+                log.exception("stage failed", extra={"run_id": run_id, "stage": name})
+
+        record.finished_at = datetime.now(timezone.utc)
+        if names and len(record.errors) >= len(names):
+            record.status = "failed"
+        elif record.errors:
+            record.status = "partial"
+        else:
+            record.status = "success"
+
+        if persist:
+            try:
+                ctx.get_storage().record_run(record)
+            except Exception as exc:  # observability must not break the run
+                log.warning(
+                    "failed to persist run record", extra={"run_id": run_id, "error": repr(exc)}
+                )
+    finally:
+        # One backend connection shared by every stage this run (and the persist
+        # step above) — closed once here, not per-stage.
+        if ctx.storage is not None:
+            try:
+                ctx.storage.close()
+            except Exception as exc:
+                log.warning("failed to close storage", extra={"run_id": run_id, "error": repr(exc)})
 
     log.info(
         "run end",

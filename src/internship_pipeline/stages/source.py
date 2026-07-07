@@ -25,7 +25,6 @@ from ..sourcing.github_readme import fetch_readme_internships, repo_slug
 from ..sourcing.http import build_client
 from ..sourcing.jsearch import fetch_jsearch
 from ..sourcing.simplify import fetch_simplify
-from ..storage import get_storage
 
 NAME = "source"
 
@@ -181,11 +180,7 @@ def run(ctx: StageContext) -> StageResult:
         seen.add(key)
         deduped.append(job)
 
-    storage = get_storage(ctx.settings)
-    try:
-        result = storage.upsert_jobs(deduped)
-    finally:
-        storage.close()
+    result = ctx.get_storage().upsert_jobs(deduped)
 
     ctx.data["new_jobs"] = result.new
     ctx.data["jobs_total"] = len(deduped)

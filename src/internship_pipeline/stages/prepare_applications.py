@@ -23,7 +23,6 @@ from ..resume import draft_common_answers, load_master_resume
 from ..resume.llm import build_default_complete
 from ..sourcing.http import build_client
 from ..sourcing.questions import fetch_greenhouse_questions, greenhouse_ref
-from ..storage import get_storage
 
 NAME = "prepare_applications"
 
@@ -82,7 +81,7 @@ def run(ctx: StageContext) -> StageResult:
     draft_cap = max(0, s.max_question_drafts_per_run)
     drafted = 0
     real_question_jobs = 0
-    storage = get_storage(s)
+    storage = ctx.get_storage()
     try:
         for index, item in enumerate(prepared):
             questions = None  # None -> draft_common_answers uses the standard set
@@ -110,7 +109,6 @@ def run(ctx: StageContext) -> StageResult:
                        "answers": len(answers), "real_questions": bool(questions)},
             )
     finally:
-        storage.close()
         if client is not None:
             client.close()
 

@@ -22,7 +22,6 @@ from ..digest import render_digest, render_digest_text, send_digest_email, write
 from ..logging_config import get_logger
 from ..models import Job, Outreach, StageContext, StageResult
 from ..outreach.replies import correlate_replies, scan_replies
-from ..storage import get_storage
 from ..tracker.rows import spreadsheet_url
 
 NAME = "log_and_digest"
@@ -71,34 +70,31 @@ def run(ctx: StageContext) -> StageResult:
 
     # Pending queues (across all runs) — best-effort. Outreach that became a real
     # Gmail draft is still awaiting the human's send, so it stays in the digest.
-    storage = get_storage(s)
-    try:
-        # Expire stale applications FIRST so the pending count/queue below already
-        # excludes them.
-        expired_count = _safe(
-            lambda: _expire_stale_applications(storage, s), 0, ctx, "application expiry")
-        pending_apps = _safe(
-            lambda: storage.list_applications(status="pending_review"), [], ctx, "applications")
-        pending_outreach: list[Outreach] = _safe(
-            lambda: (
-                storage.list_outreach(status="pending_review")
-                + storage.list_outreach(status="gmail_draft_created")
-            ),
-            [], ctx, "outreach",
-        )
-        replies = _safe(lambda: scan_replies(s), [], ctx, "reply scan")
+    storage = ctx.get_storage()
+    # Expire stale applications FIRST so the pending count/queue below already
+    # excludes them.
+    expired_count = _safe(
+        lambda: _expire_stale_applications(storage, s), 0, ctx, "application expiry")
+    pending_apps = _safe(
+        lambda: storage.list_applications(status="pending_review"), [], ctx, "applications")
+    pending_outreach: list[Outreach] = _safe(
+        lambda: (
+            storage.list_outreach(status="pending_review")
+            + storage.list_outreach(status="gmail_draft_created")
+        ),
+        [], ctx, "outreach",
+    )
+    replies = _safe(lambda: scan_replies(s), [], ctx, "reply scan")
 
-        # Track the outreach lifecycle: a reply from a contact we emailed moves the
-        # row sent -> replied (a storage write, not an outbound action).
-        replied_rows = _safe(
-            lambda: correlate_replies(replies, storage.list_outreach(status="sent")),
-            [], ctx, "reply correlation",
-        )
-        for outreach in replied_rows:
-            outreach.status = "replied"
-            _safe(lambda o=outreach: storage.save_outreach(o), None, ctx, "reply status update")
-    finally:
-        storage.close()
+    # Track the outreach lifecycle: a reply from a contact we emailed moves the
+    # row sent -> replied (a storage write, not an outbound action).
+    replied_rows = _safe(
+        lambda: correlate_replies(replies, storage.list_outreach(status="sent")),
+        [], ctx, "reply correlation",
+    )
+    for outreach in replied_rows:
+        outreach.status = "replied"
+        _safe(lambda o=outreach: storage.save_outreach(o), None, ctx, "reply status update")
 
     counts = {
         "new": len(new_jobs),

@@ -39,7 +39,6 @@ from ..outreach.suppress import is_suppressed as suppression_check
 from ..resume import load_master_resume
 from ..resume.llm import build_default_complete
 from ..sourcing.http import build_client
-from ..storage import get_storage
 
 NAME = "draft_outreach"
 
@@ -85,7 +84,7 @@ def run(ctx: StageContext) -> StageResult:
 
     drafts: list[Outreach] = []
     verified = guessed = suppressed_count = 0
-    storage = get_storage(s)
+    storage = ctx.get_storage()
     try:
         for item in prepared:
             job = item.job
@@ -189,7 +188,6 @@ def run(ctx: StageContext) -> StageResult:
                     drafts, settings=s, storage=storage, draft_fn=draft_fn
                 )
     finally:
-        storage.close()
         if client is not None:
             client.close()
 

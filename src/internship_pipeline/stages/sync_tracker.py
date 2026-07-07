@@ -20,7 +20,6 @@ from datetime import datetime, timezone
 
 from ..logging_config import get_logger
 from ..models import Application, StageContext, StageResult
-from ..storage import get_storage
 from ..tracker import build_tracker_services, plan_answers_upsert, plan_applications_upsert
 from ..tracker.sheets import (
     ANSWERS_TAB,
@@ -52,9 +51,8 @@ def _collect_applications(
 
     seen = {a.dedupe_key for a in apps}
     cv_links: dict[str, str] = {}
-    storage = get_storage(ctx.settings)
     try:
-        for app in storage.list_applications():
+        for app in ctx.get_storage().list_applications():
             if app.cv_drive_link:
                 cv_links.setdefault(app.dedupe_key, app.cv_drive_link)
             if app.status == "pending_review" and app.dedupe_key not in seen:
@@ -65,8 +63,6 @@ def _collect_applications(
             "could not reconcile stored applications; syncing this run only",
             extra={"run_id": ctx.run_id, "error": repr(exc)},
         )
-    finally:
-        storage.close()
     return apps, locations, cv_links
 
 

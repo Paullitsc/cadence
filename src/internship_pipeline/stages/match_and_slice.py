@@ -40,7 +40,6 @@ from ..resume.llm import build_default_complete
 from ..resume.matching import job_text
 from ..resume.models import BulletRef
 from ..resume.rendercv import write_and_render
-from ..storage import get_storage
 from ..tracker.auth import build_tracker_services, tracker_configured
 from ..tracker.drive import upload_pdf
 from ..triggers import favorability, is_dual_trigger
@@ -287,57 +286,54 @@ def run(ctx: StageContext) -> StageResult:
     prepared: list[PreparedApplication] = []
     cache_hits = 0
     cv_by_index: dict[int, _ClusterCv] = {}
-    storage = get_storage(s)
-    try:
-        for cluster in clusters:
-            rep_job, rep_match = capped[cluster.representative]
-            cv = _cluster_cv(rep_job, rep_match, resume=resume, complete=complete,
-                             settings=s, storage=storage, drive=drive)
-            if cv.from_cache:
-                cache_hits += 1
-            for idx in cluster.members:
-                cv_by_index[idx] = cv
+    storage = ctx.get_storage()
+    for cluster in clusters:
+        rep_job, rep_match = capped[cluster.representative]
+        cv = _cluster_cv(rep_job, rep_match, resume=resume, complete=complete,
+                         settings=s, storage=storage, drive=drive)
+        if cv.from_cache:
+            cache_hits += 1
+        for idx in cluster.members:
+            cv_by_index[idx] = cv
 
-        for idx, (job, match) in enumerate(capped):
-            cv = cv_by_index[idx]
-            fav = favorability(job, s)
-            dual = is_dual_trigger(match.fit_score, fav.favorable, s)
-            # human_review flags a closer look on high-fit OR target-company roles;
-            # the dual-trigger (high-fit AND favorable) is the stricter outreach gate.
-            high_priority = (
-                match.fit_score >= s.high_priority_threshold
-                or job.company_name.lower() in s.target_company_set
+    for idx, (job, match) in enumerate(capped):
+        cv = cv_by_index[idx]
+        fav = favorability(job, s)
+        dual = is_dual_trigger(match.fit_score, fav.favorable, s)
+        # human_review flags a closer look on high-fit OR target-company roles;
+        # the dual-trigger (high-fit AND favorable) is the stricter outreach gate.
+        high_priority = (
+            match.fit_score >= s.high_priority_threshold
+            or job.company_name.lower() in s.target_company_set
+        )
+        app = Application(
+            dedupe_key=job.dedupe_key(),
+            company_name=job.company_name,
+            title=job.title,
+            url=job.url,
+            fit_score=match.fit_score,
+            keywords=match.keywords,
+            tailored_resume_path=cv.artifact_path,
+            tailored_resume_yaml=cv.yaml_text,
+            cv_drive_link=cv.drive_link,
+            human_review=high_priority or cv.llm_review_flag,
+            status="pending_review",
+        )
+        storage.save_application(app)
+        prepared.append(
+            PreparedApplication(
+                job=job, keywords=match.keywords, app=app, top_bullets=match.top_bullets,
+                favorable=fav.favorable, favorable_reason=fav.reason, dual_trigger=dual,
             )
-            app = Application(
-                dedupe_key=job.dedupe_key(),
-                company_name=job.company_name,
-                title=job.title,
-                url=job.url,
-                fit_score=match.fit_score,
-                keywords=match.keywords,
-                tailored_resume_path=cv.artifact_path,
-                tailored_resume_yaml=cv.yaml_text,
-                cv_drive_link=cv.drive_link,
-                human_review=high_priority or cv.llm_review_flag,
-                status="pending_review",
-            )
-            storage.save_application(app)
-            prepared.append(
-                PreparedApplication(
-                    job=job, keywords=match.keywords, app=app, top_bullets=match.top_bullets,
-                    favorable=fav.favorable, favorable_reason=fav.reason, dual_trigger=dual,
-                )
-            )
-            log.info(
-                "prepared tailored résumé",
-                extra={"run_id": ctx.run_id, "company": job.company_name, "title": job.title,
-                       "fit": match.fit_score, "human_review": app.human_review,
-                       "favorable": fav.favorable, "dual_trigger": dual,
-                       "pdf": cv.pdf_path, "drive_link": cv.drive_link,
-                       "used_llm": cv.used_llm, "cv_from_cache": cv.from_cache},
-            )
-    finally:
-        storage.close()
+        )
+        log.info(
+            "prepared tailored résumé",
+            extra={"run_id": ctx.run_id, "company": job.company_name, "title": job.title,
+                   "fit": match.fit_score, "human_review": app.human_review,
+                   "favorable": fav.favorable, "dual_trigger": dual,
+                   "pdf": cv.pdf_path, "drive_link": cv.drive_link,
+                   "used_llm": cv.used_llm, "cv_from_cache": cv.from_cache},
+        )
 
     # LLM calls saved = within-run cluster reuse + cross-run cache hits. Only counted
     # when an LLM is actually configured (deterministic tailoring is free anyway).

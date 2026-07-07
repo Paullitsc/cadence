@@ -240,3 +240,22 @@ class StageContext:
     run_id: str
     settings: Settings = dataclasses.field(default_factory=get_settings)
     data: dict = dataclasses.field(default_factory=dict)
+    # Lazily-created, run-shared Storage — see get_storage(). Not constructed
+    # eagerly so a stage-less/no-persist context never opens a connection.
+    storage: Optional[object] = None
+
+    def get_storage(self):
+        """This run's shared Storage backend, creating it on first use.
+
+        Stages call this instead of ``storage.get_storage(settings)`` directly
+        so one run opens ONE backend connection (one Supabase httpx.Client, not
+        six) instead of every stage independently constructing and closing its
+        own. ``run_pipeline`` closes it once, after every stage has run — a
+        stage must never close it itself. Local import: storage/base.py imports
+        from this module, so importing Storage at module level here would cycle.
+        """
+        if self.storage is None:
+            from .storage import get_storage as _build_storage
+
+            self.storage = _build_storage(self.settings)
+        return self.storage
