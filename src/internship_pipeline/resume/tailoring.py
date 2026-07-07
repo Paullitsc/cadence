@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass, field
 
 from ..logging_config import get_logger
-from .llm import CompleteFn
+from .llm import CompleteFn, resume_system_blocks
 from .matching import content_tokens
 from .models import BulletRef, MasterResume
 
@@ -151,26 +151,10 @@ def enforce_grounding(candidate_text: str, original_text: str, input_vocab: set[
 
 
 def build_system_blocks(resume: MasterResume) -> list[dict]:
-    """System content blocks: stable instructions + full-résumé context (cached).
-
-    The résumé context is the same for every job in a run, so it carries
-    ``cache_control`` to hit the prompt cache. (Caching silently no-ops below the
-    model's minimum cacheable prefix; the benefit scales with résumé size.)
-    """
-    context_lines = [f"CANDIDATE: {resume.name}"]
-    if resume.summary:
-        context_lines.append(f"SUMMARY: {resume.summary}")
-    if resume.skills.all():
-        context_lines.append("SKILLS: " + ", ".join(resume.skills.all()))
-    context = "\n".join(context_lines)
-    return [
-        {"type": "text", "text": SYSTEM_INSTRUCTIONS},
-        {
-            "type": "text",
-            "text": f"Reference context (do not fabricate beyond it):\n{context}",
-            "cache_control": {"type": "ephemeral"},
-        },
-    ]
+    """System content blocks: stable instructions + full-résumé context (cached)."""
+    return resume_system_blocks(
+        SYSTEM_INSTRUCTIONS, resume, label="Reference context (do not fabricate beyond it)"
+    )
 
 
 def build_user_text(jd_text: str, keywords: list[str], candidate_bullets: list[BulletRef], limit: int) -> str:

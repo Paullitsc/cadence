@@ -20,7 +20,7 @@ from dataclasses import dataclass
 
 from ..logging_config import get_logger
 from ..models import Job
-from ..resume.llm import CompleteFn
+from ..resume.llm import CompleteFn, resume_system_blocks
 from ..resume.matching import content_tokens
 from ..resume.models import BulletRef, MasterResume
 from .contacts import Contact
@@ -205,19 +205,9 @@ def build_user_text(job: Job, keywords: list[str], top_bullets: list[BulletRef],
 
 def build_system_blocks(resume: MasterResume) -> list[dict]:
     """Stable instructions + cached candidate context (same pattern as Phase 2)."""
-    ctx = [f"CANDIDATE: {resume.name}"]
-    if resume.summary:
-        ctx.append(f"SUMMARY: {resume.summary}")
-    if resume.skills.all():
-        ctx.append("SKILLS: " + ", ".join(resume.skills.all()))
-    return [
-        {"type": "text", "text": SYSTEM_INSTRUCTIONS},
-        {
-            "type": "text",
-            "text": f"Reference context (do not fabricate beyond it):\n{chr(10).join(ctx)}",
-            "cache_control": {"type": "ephemeral"},
-        },
-    ]
+    return resume_system_blocks(
+        SYSTEM_INSTRUCTIONS, resume, label="Reference context (do not fabricate beyond it)"
+    )
 
 
 def draft_outreach_copy(

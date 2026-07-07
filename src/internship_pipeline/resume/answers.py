@@ -10,7 +10,7 @@ human to edit and send — nothing here is ever submitted automatically.
 from __future__ import annotations
 
 from ..models import Job
-from .llm import CompleteFn
+from .llm import CompleteFn, resume_system_blocks
 from .models import MasterResume
 
 # Standard questions that recur across internship applications.
@@ -34,27 +34,11 @@ SYSTEM_INSTRUCTIONS = (
 
 
 def build_system_blocks(resume: MasterResume) -> list[dict]:
-    lines = [f"CANDIDATE: {resume.name}"]
-    if resume.summary:
-        lines.append(f"SUMMARY: {resume.summary}")
-    if resume.skills.all():
-        lines.append("SKILLS: " + ", ".join(resume.skills.all()))
-    for exp in resume.experiences:
-        lines.append(f"EXPERIENCE: {exp.role} at {exp.company}")
-        # Prose channel: strip résumé Markdown bold so answers never echo `**`.
-        lines.extend(f"  - {b.text.replace('**', '')}" for b in exp.bullets)
-    for proj in resume.projects:
-        lines.append(f"PROJECT: {proj.name}")
-        lines.extend(f"  - {b.text.replace('**', '')}" for b in proj.bullets)
-    profile = "\n".join(lines)
-    return [
-        {"type": "text", "text": SYSTEM_INSTRUCTIONS},
-        {
-            "type": "text",
-            "text": f"CANDIDATE PROFILE (the only facts you may use):\n{profile}",
-            "cache_control": {"type": "ephemeral"},
-        },
-    ]
+    return resume_system_blocks(
+        SYSTEM_INSTRUCTIONS, resume,
+        label="CANDIDATE PROFILE (the only facts you may use)",
+        include_bullets=True,
+    )
 
 
 def build_user_text(job: Job, keywords: list[str], questions: list[str]) -> str:

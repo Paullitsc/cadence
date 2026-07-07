@@ -23,6 +23,7 @@ from typing import Callable, Optional
 
 from ..config import Settings
 from ..logging_config import get_logger
+from .models import MasterResume
 
 log = get_logger(__name__)
 
@@ -30,6 +31,52 @@ log = get_logger(__name__)
 CompleteFn = Callable[[list[dict], str], dict]
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
+
+
+def resume_context_lines(resume: MasterResume, *, include_bullets: bool = False) -> list[str]:
+    """CANDIDATE/SUMMARY/SKILLS context lines, optionally extended with every
+    experience/project's bullets.
+
+    Answer drafting (``resume/answers.py``) needs the full profile to answer
+    free-form questions, so it passes ``include_bullets=True``; tailoring and
+    outreach copy pass the candidate's bullets separately in the user turn
+    instead, so they use the compact form.
+    """
+    lines = [f"CANDIDATE: {resume.name}"]
+    if resume.summary:
+        lines.append(f"SUMMARY: {resume.summary}")
+    if resume.skills.all():
+        lines.append("SKILLS: " + ", ".join(resume.skills.all()))
+    if include_bullets:
+        for exp in resume.experiences:
+            lines.append(f"EXPERIENCE: {exp.role} at {exp.company}")
+            # Prose channel: strip résumé Markdown bold so answers never echo `**`.
+            lines.extend(f"  - {b.text.replace('**', '')}" for b in exp.bullets)
+        for proj in resume.projects:
+            lines.append(f"PROJECT: {proj.name}")
+            lines.extend(f"  - {b.text.replace('**', '')}" for b in proj.bullets)
+    return lines
+
+
+def resume_system_blocks(
+    instructions: str, resume: MasterResume, *, label: str, include_bullets: bool = False
+) -> list[dict]:
+    """Stable instructions + cached candidate context — shared by every Phase-2/3
+    reasoning call (tailoring, outreach copy, answer drafting).
+
+    The résumé context is the same for every job in a run, so it carries
+    ``cache_control`` to hit the prompt cache. (Caching silently no-ops below the
+    model's minimum cacheable prefix; the benefit scales with résumé size.)
+    """
+    context = "\n".join(resume_context_lines(resume, include_bullets=include_bullets))
+    return [
+        {"type": "text", "text": instructions},
+        {
+            "type": "text",
+            "text": f"{label}:\n{context}",
+            "cache_control": {"type": "ephemeral"},
+        },
+    ]
 
 
 def parse_json_object(text: str) -> dict:
