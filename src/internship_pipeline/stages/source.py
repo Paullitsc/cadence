@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ..logging_config import get_logger
-from ..models import Job, StageContext, StageResult
+from ..models import DATA_JOBS_TOTAL, DATA_NEW_JOBS, Job, StageContext, StageResult
 from ..sourcing.ats import fetch_company
 from ..sourcing.companies import load_companies
 from ..sourcing.github_readme import fetch_readme_internships, repo_slug
@@ -182,8 +182,8 @@ def run(ctx: StageContext) -> StageResult:
 
     result = ctx.get_storage().upsert_jobs(deduped)
 
-    ctx.data["new_jobs"] = result.new
-    ctx.data["jobs_total"] = len(deduped)
+    ctx.data[DATA_NEW_JOBS] = result.new
+    ctx.data[DATA_JOBS_TOTAL] = len(deduped)
     counts = {
         "jobs_sourced": len(deduped),
         "jobs_new": result.new_count,

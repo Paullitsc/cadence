@@ -18,7 +18,7 @@ prepared list is already in fit order).
 from __future__ import annotations
 
 from ..logging_config import get_logger
-from ..models import StageContext, StageResult
+from ..models import DATA_PREPARED, DATA_RESUME, StageContext, StageResult
 from ..resume import draft_common_answers, load_master_resume
 from ..resume.llm import build_default_complete
 from ..sourcing.http import build_client
@@ -53,12 +53,12 @@ def run(ctx: StageContext) -> StageResult:
     log.info("stage start", extra={"run_id": ctx.run_id, "stage": NAME})
     s = ctx.settings
 
-    prepared = ctx.data.get("prepared", [])
+    prepared = ctx.data.get(DATA_PREPARED, [])
     if not prepared:
         log.info("no prepared applications to draft answers for", extra={"run_id": ctx.run_id})
         return StageResult(name=NAME, counts={"answers_drafted": 0, "applications_ready": 0})
 
-    resume = ctx.data.get("resume")
+    resume = ctx.data.get(DATA_RESUME)
     if resume is None:
         try:
             resume = load_master_resume(s.master_resume_file)

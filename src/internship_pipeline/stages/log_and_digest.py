@@ -20,7 +20,16 @@ from datetime import datetime, timedelta, timezone
 
 from ..digest import render_digest, render_digest_text, send_digest_email, write_digest
 from ..logging_config import get_logger
-from ..models import Job, Outreach, StageContext, StageResult
+from ..models import (
+    DATA_JOBS_TOTAL,
+    DATA_LLM_CALLS_SAVED,
+    DATA_NEW_JOBS,
+    DATA_PREPARED,
+    Job,
+    Outreach,
+    StageContext,
+    StageResult,
+)
 from ..outreach.replies import correlate_replies, scan_replies
 from ..tracker.rows import spreadsheet_url
 
@@ -66,7 +75,7 @@ def run(ctx: StageContext) -> StageResult:
     log.info("stage start", extra={"run_id": ctx.run_id, "stage": NAME})
     s = ctx.settings
 
-    new_jobs: list[Job] = ctx.data.get("new_jobs", [])
+    new_jobs: list[Job] = ctx.data.get(DATA_NEW_JOBS, [])
 
     # Pending queues (across all runs) — best-effort. Outreach that became a real
     # Gmail draft is still awaiting the human's send, so it stays in the digest.
@@ -98,11 +107,11 @@ def run(ctx: StageContext) -> StageResult:
 
     counts = {
         "new": len(new_jobs),
-        "total_sourced": ctx.data.get("jobs_total", 0),
-        "applications_prepared": len(ctx.data.get("prepared", [])),
+        "total_sourced": ctx.data.get(DATA_JOBS_TOTAL, 0),
+        "applications_prepared": len(ctx.data.get(DATA_PREPARED, [])),
         "applications_pending": len(pending_apps),
         "applications_expired": expired_count,
-        "llm_calls_saved": ctx.data.get("llm_calls_saved", 0),
+        "llm_calls_saved": ctx.data.get(DATA_LLM_CALLS_SAVED, 0),
         "outreach_pending": len(pending_outreach),
         "replies_found": len(replies),
         "replied_matched": len(replied_rows),

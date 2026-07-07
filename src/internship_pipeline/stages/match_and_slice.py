@@ -25,7 +25,17 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ..logging_config import get_logger
-from ..models import Application, CvCacheEntry, Job, StageContext, StageResult
+from ..models import (
+    DATA_LLM_CALLS_SAVED,
+    DATA_NEW_JOBS,
+    DATA_PREPARED,
+    DATA_RESUME,
+    Application,
+    CvCacheEntry,
+    Job,
+    StageContext,
+    StageResult,
+)
 from ..resume import (
     all_bullets,
     build_rendercv_cv,
@@ -212,7 +222,7 @@ def run(ctx: StageContext) -> StageResult:
     log.info("stage start", extra={"run_id": ctx.run_id, "stage": NAME})
     s = ctx.settings
 
-    jobs: list[Job] = ctx.data.get("new_jobs", [])
+    jobs: list[Job] = ctx.data.get(DATA_NEW_JOBS, [])
     if not jobs:
         log.info("no new jobs to score", extra={"run_id": ctx.run_id, "stage": NAME})
         return StageResult(name=NAME, counts={"jobs_scored": 0, "applications_prepared": 0})
@@ -346,9 +356,9 @@ def run(ctx: StageContext) -> StageResult:
                    "cache_hits": cache_hits, "llm_calls_saved": llm_calls_saved},
         )
 
-    ctx.data["prepared"] = prepared
-    ctx.data["resume"] = resume  # reused by prepare_applications (no reload/relog)
-    ctx.data["llm_calls_saved"] = llm_calls_saved  # shown in the digest header
+    ctx.data[DATA_PREPARED] = prepared
+    ctx.data[DATA_RESUME] = resume  # reused by prepare_applications (no reload/relog)
+    ctx.data[DATA_LLM_CALLS_SAVED] = llm_calls_saved  # shown in the digest header
     counts = {
         "jobs_scored": len(jobs),
         "above_threshold": len(scored),

@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from ..logging_config import get_logger
-from ..models import Application, StageContext, StageResult
+from ..models import DATA_PREPARED, Application, StageContext, StageResult
 from ..tracker import build_tracker_services, plan_answers_upsert, plan_applications_upsert
 from ..tracker.sheets import (
     ANSWERS_TAB,
@@ -45,7 +45,7 @@ def _collect_applications(
     to its Drive CV link (any status), so the upsert can say "same as row N" even
     when the row holding the link is past pending (human moved its Status on).
     """
-    prepared = ctx.data.get("prepared", [])
+    prepared = ctx.data.get(DATA_PREPARED, [])
     apps: list[Application] = [item.app for item in prepared]
     locations = {item.job.dedupe_key(): item.job.locations for item in prepared}
 

@@ -26,7 +26,15 @@ Runs fully offline with zero credentials (pattern-guess contact + deterministic 
 from __future__ import annotations
 
 from ..logging_config import get_logger
-from ..models import Outreach, StageContext, StageResult, make_outreach_id
+from ..models import (
+    DATA_OUTREACH,
+    DATA_PREPARED,
+    DATA_RESUME,
+    Outreach,
+    StageContext,
+    StageResult,
+    make_outreach_id,
+)
 from ..outreach import (
     LookupBudget,
     build_email_body,
@@ -49,7 +57,7 @@ def run(ctx: StageContext) -> StageResult:
     log.info("stage start", extra={"run_id": ctx.run_id, "stage": NAME})
     s = ctx.settings
 
-    prepared_all = ctx.data.get("prepared", [])
+    prepared_all = ctx.data.get(DATA_PREPARED, [])
     # Phase 4 dual-trigger gate: outreach only for high-fit AND favorable roles.
     prepared = [p for p in prepared_all if getattr(p, "dual_trigger", False)]
     if not prepared:
@@ -63,7 +71,7 @@ def run(ctx: StageContext) -> StageResult:
             notes=f"prepared={len(prepared_all)}, dual_trigger=0",
         )
 
-    resume = ctx.data.get("resume")
+    resume = ctx.data.get(DATA_RESUME)
     if resume is None:
         try:
             resume = load_master_resume(s.master_resume_file)
@@ -191,7 +199,7 @@ def run(ctx: StageContext) -> StageResult:
         if client is not None:
             client.close()
 
-    ctx.data["outreach"] = drafts
+    ctx.data[DATA_OUTREACH] = drafts
     counts = {
         "gmail_drafts_created": gmail_drafts_created,
         "outreach_drafted": len(drafts),
