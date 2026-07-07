@@ -17,13 +17,13 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from urllib.parse import urlsplit
 
 import httpx
 
 from ..logging_config import get_logger
 from ..models import Job, JobSource
 from .http import get_text
+from .util import repo_slug
 
 log = get_logger(__name__)
 
@@ -42,15 +42,6 @@ _APPLY = "apply"
 _DATE = "date posted"
 
 _CONTINUATION = "↳"  # "same company as the row above"
-
-
-def repo_slug(url: str) -> str:
-    """``owner/repo`` from a raw.githubusercontent.com URL (fallback: host+path)."""
-    parts = urlsplit(url)
-    segments = [p for p in parts.path.split("/") if p]
-    if parts.netloc == "raw.githubusercontent.com" and len(segments) >= 2:
-        return f"{segments[0]}/{segments[1]}"
-    return f"{parts.netloc}{parts.path}"
 
 
 def _clean_cell(cell: str) -> str:

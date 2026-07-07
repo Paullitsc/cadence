@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from internship_pipeline.models import JobSource
-from internship_pipeline.sourcing.github_readme import parse_readme_internships, repo_slug
+from internship_pipeline.sourcing.github_readme import parse_readme_internships
+from internship_pipeline.sourcing.util import repo_slug
 
 
 def load_fixture(name: str) -> str:

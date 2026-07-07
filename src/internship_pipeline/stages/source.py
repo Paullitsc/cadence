@@ -21,10 +21,11 @@ from ..logging_config import get_logger
 from ..models import DATA_JOBS_TOTAL, DATA_NEW_JOBS, Job, StageContext, StageResult
 from ..sourcing.ats import fetch_company
 from ..sourcing.companies import load_companies
-from ..sourcing.github_readme import fetch_readme_internships, repo_slug
+from ..sourcing.github_readme import fetch_readme_internships
 from ..sourcing.http import build_client
 from ..sourcing.jsearch import fetch_jsearch
 from ..sourcing.simplify import fetch_simplify
+from ..sourcing.util import repo_slug
 
 NAME = "source"
 

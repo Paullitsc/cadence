@@ -44,7 +44,6 @@ jobs:
       OUTREACH_OPT_OUT: ${{ vars.OUTREACH_OPT_OUT || '' }}
       # --- Phase 4: dual-trigger, morning digest email, alerts ---
       FAVORABLE_RECENT_DAYS: ${{ vars.FAVORABLE_RECENT_DAYS || '7' }}
-      DIGEST_TOP_N: ${{ vars.DIGEST_TOP_N || '10' }}
       DIGEST_EMAIL_ENABLED: ${{ vars.DIGEST_EMAIL_ENABLED || 'false' }}
       DIGEST_TO_EMAIL: ${{ vars.DIGEST_TO_EMAIL || '' }}
       REPLY_SCAN_DAYS: ${{ vars.REPLY_SCAN_DAYS || '14' }}

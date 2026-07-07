@@ -191,7 +191,11 @@ def _cluster_cv(job: Job, match, *, resume, complete, settings, storage, drive) 
     drive_link = None
     drive_file_id = None
     if drive is not None and pdf_path:
-        uploaded = upload_pdf(drive, s.drive_folder_id, pdf_path, f"{job.dedupe_key()}.pdf")
+        # Named after the CV's cache key (its content identity: bullets +
+        # keywords), not the representative job's dedupe key — matches the
+        # cache-backfill upload above and stays stable across runs/clusters
+        # that reuse this same tailored CV for a different representative job.
+        uploaded = upload_pdf(drive, s.drive_folder_id, pdf_path, f"{key}.pdf")
         if uploaded is not None:
             drive_link, drive_file_id = uploaded.web_view_link, uploaded.file_id
 

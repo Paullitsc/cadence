@@ -300,7 +300,7 @@ vars. Full manual walkthrough: [`ACTIONS_FOR_PAUL.md`](./ACTIONS_FOR_PAUL.md).
 | `OUTREACH_FROM_NAME`, `OUTREACH_FROM_EMAIL`, `OUTREACH_PHYSICAL_ADDRESS` | 3 | CAN-SPAM identity — **required to send email** |
 | `GMAIL_TOKEN_JSON` (secret) → `GMAIL_OAUTH_TOKEN_JSON` (path) | 3/4 | Gmail send (approve-and-send), digest email, reply scan, failure alert |
 | `MASTER_RESUME_YAML` (secret) | 2 | full contents of `master_resume.yaml` (PII, git-ignored) — **required in Actions** or the scheduled run skips matching/tailoring/outreach entirely |
-| `DIGEST_EMAIL_ENABLED`, `DIGEST_TO_EMAIL`, `DIGEST_TOP_N` | 4 | email the morning digest to yourself |
+| `DIGEST_EMAIL_ENABLED`, `DIGEST_TO_EMAIL` | 4 | email the morning digest to yourself |
 | `ALERT_CHANNEL` (`email`\|`slack`), `SLACK_WEBHOOK_URL` | 4 | failure alert channel (email implemented; slack stub) |
 | `REPLY_SCAN_DAYS`, `REPLY_SCAN_QUERY` | 4 | recruiter-reply Gmail scan window/terms |
 | `TRACKER_SHEETS_ENABLED`, `GOOGLE_SERVICE_ACCOUNT_JSON` (secret), `SHEETS_SPREADSHEET_ID`, `DRIVE_FOLDER_ID` | 5 | Google Sheets tracker + Drive CV store; unset ⇒ sync stage no-ops |

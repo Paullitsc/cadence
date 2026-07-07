@@ -155,7 +155,6 @@ class Settings(BaseSettings):
 
     # Morning digest email (Gmail). Sending the digest TO YOURSELF is safe to automate, so
     # this is the one outbound action the daily run may perform — gated on creds + this flag.
-    digest_top_n: int = 10  # top-N applications by fit score shown in the digest
     digest_email_enabled: bool = False  # off by default → digest is written to file only
     digest_to_email: Optional[str] = None  # recipient; defaults to outreach_from_email (self)
     # Recruiter-reply scan: a best-effort Gmail search surfacing recent inbound messages to
