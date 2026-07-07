@@ -10,9 +10,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, TypeVar
 
 from ..models import Application, CvCacheEntry, Job, Outreach, RunRecord
+
+T = TypeVar("T")
 
 
 @dataclass
@@ -27,8 +29,8 @@ class UpsertResult:
         return len(self.new)
 
 
-def chunked(items: list[str], size: int) -> Iterator[list[str]]:
-    """Yield ``items`` in lists of at most ``size`` (for IN-clause batching)."""
+def chunked(items: list[T], size: int) -> Iterator[list[T]]:
+    """Yield ``items`` in lists of at most ``size`` (for IN-clause / bulk-upsert batching)."""
     for i in range(0, len(items), size):
         yield items[i : i + size]
 

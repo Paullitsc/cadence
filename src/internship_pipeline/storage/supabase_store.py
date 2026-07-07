@@ -4,8 +4,10 @@ Talks to Supabase's PostgREST API over httpx (already a dependency), so no extra
 SDK is needed. Run ``storage/sql/postgres.sql`` once in the Supabase SQL editor to
 create the tables (see ACTIONS_FOR_PAUL.md). Uses the service-role key.
 
-New-vs-seen is computed the same way as SQLite: diff against ``existing_keys``,
-INSERT the new ones, PATCH ``last_seen_at`` on the rest.
+New-vs-seen, and what refreshes on a re-seen job, is computed the same way as
+SQLite: last_seen_at/active/title/locations update; company_name, url,
+date_posted, source, source_feed and first_seen_at are frozen at whatever they
+were first stored as. One snapshot query + one batched upsert call.
 """
 
 from __future__ import annotations
@@ -28,6 +30,13 @@ log = get_logger(__name__)
 # quietly drop rows. Paginate with the `Range` header instead of trusting a
 # single GET to return everything.
 _PAGE_SIZE = 1000
+
+# Columns a re-seen job's upsert must echo back UNCHANGED (frozen at whatever
+# they were on first insert) — everything else (last_seen_at, active, title,
+# locations) refreshes. Matches SQLiteStore.upsert_jobs's UPDATE column list.
+_FROZEN_ON_REFRESH: tuple[str, ...] = (
+    "company_name", "url", "date_posted", "source", "source_feed", "first_seen_at",
+)
 
 
 def _now() -> str:
@@ -98,44 +107,59 @@ class SupabaseStore(Storage):
             found.update(row["dedupe_key"] for row in resp.json())
         return found
 
+    def _existing_snapshot(self, keys: list[str]) -> dict[str, dict]:
+        """``_FROZEN_ON_REFRESH`` column values for whichever of ``keys`` already
+        exist — both the new-vs-seen signal (membership) and what a re-seen row's
+        upsert must echo back unchanged, since a partial-column PostgREST upsert
+        would otherwise NULL out (and violate NOT NULL on) the omitted columns.
+        """
+        cols = "dedupe_key," + ",".join(_FROZEN_ON_REFRESH)
+        found: dict[str, dict] = {}
+        for chunk in chunked(keys, 100):
+            in_list = "(" + ",".join(chunk) + ")"
+            resp = self.client.get(
+                f"{self.base}/jobs",
+                params={"select": cols, "dedupe_key": f"in.{in_list}"},
+            )
+            resp.raise_for_status()
+            found.update({row["dedupe_key"]: row for row in resp.json()})
+        return found
+
     def upsert_jobs(self, jobs: list[Job]) -> UpsertResult:
         if not jobs:
             return UpsertResult()
         now = _now()
-        existing = self.existing_keys(j.dedupe_key() for j in jobs)
-        # Dedupe within this batch while splitting into new vs seen.
-        new: list[Job] = []
-        seen_keys: list[str] = []
-        batch_seen: set[str] = set()
+        # Dedupe within this batch (source.py already dedupes per run; this is a
+        # defensive backstop — Postgres rejects an upsert that targets the same
+        # conflict key twice in one statement).
+        unique: dict[str, Job] = {}
         for job in jobs:
-            key = job.dedupe_key()
-            if key in batch_seen:
-                continue
-            batch_seen.add(key)
-            if key in existing:
-                seen_keys.append(key)
-            else:
-                new.append(job)
+            unique.setdefault(job.dedupe_key(), job)
 
-        if new:
+        existing = self._existing_snapshot(list(unique))
+
+        new: list[Job] = []
+        seen = 0
+        rows: list[dict] = []
+        for key, job in unique.items():
+            row = self._row(job, now)
+            snapshot = existing.get(key)
+            if snapshot is None:
+                new.append(job)
+            else:
+                seen += 1
+                row.update({col: snapshot[col] for col in _FROZEN_ON_REFRESH})
+            rows.append(row)
+
+        for chunk in chunked(rows, 500):
             resp = self.client.post(
                 f"{self.base}/jobs",
                 params={"on_conflict": "dedupe_key"},
                 headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
-                json=[self._row(j, now) for j in new],
+                json=chunk,
             )
             resp.raise_for_status()
-        if seen_keys:
-            for chunk in chunked(seen_keys, 100):
-                in_list = "(" + ",".join(chunk) + ")"
-                resp = self.client.patch(
-                    f"{self.base}/jobs",
-                    params={"dedupe_key": f"in.{in_list}"},
-                    headers={"Prefer": "return=minimal"},
-                    json={"last_seen_at": now},
-                )
-                resp.raise_for_status()
-        return UpsertResult(new=new, seen=len(seen_keys))
+        return UpsertResult(new=new, seen=seen)
 
     def record_run(self, run: RunRecord) -> None:
         body = {
