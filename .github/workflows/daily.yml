@@ -80,11 +80,23 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           python-version: "3.12"
+          enable-cache: true
 
       - name: Install dependencies
         # gmail extra powers the digest email + the failure email alert; tracker extra
         # powers the Google Sheets sync + Drive CV upload (all optional at runtime).
         run: uv sync --extra dev --extra phase2 --extra gmail --extra tracker
+
+      # sentence-transformers (the default embedding backend) downloads its model
+      # (~90MB) from Hugging Face on first use. Runners are ephemeral, so without
+      # this every scheduled run re-downloads it from scratch. Keyed on the model
+      # name (config.py's EMBEDDING_MODEL default) — bump the key if that default
+      # ever changes, so a stale cache is never silently reused for a new model.
+      - name: Cache Hugging Face model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: huggingface-${{ runner.os }}-sentence-transformers-all-MiniLM-L6-v2
 
       # Materialize the Gmail token from a secret (contents of the authorized-user JSON
       # minted locally via `python -m internship_pipeline.outreach.gmail_auth`). If the
