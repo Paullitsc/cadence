@@ -91,27 +91,34 @@ class _ClusterCv:
 
 
 def _identical_cached_cv(
-    storage, yaml_text: str, *, require_drive_link: bool
+    cache_entries: list[CvCacheEntry], yaml_text: str, *, require_drive_link: bool
 ) -> Optional[CvCacheEntry]:
     """A cached CV whose YAML is byte-identical to ``yaml_text`` and that still has
     a reusable artifact. With Drive configured, only a twin that already carries a
     Drive link counts (a link-less twin falls through to a fresh render + upload).
-    Best-effort: scan failure → None."""
-    try:
-        for entry in storage.list_cv_cache():
-            if entry.tailored_resume_yaml != yaml_text:
-                continue
-            if entry.cv_drive_link or (not require_drive_link and entry.pdf_path):
-                return entry
-    except Exception as exc:
-        log.warning("cv cache scan failed; rendering fresh", extra={"error": repr(exc)})
+
+    ``cache_entries`` is a run-scoped snapshot (see ``run()``), not a fresh
+    ``storage.list_cv_cache()`` call — this scan runs once per cluster, and
+    re-fetching the whole table every time would mean one full-table read per
+    cluster-with-a-cache-miss, growing with the cache table's size every day.
+    """
+    for entry in cache_entries:
+        if entry.tailored_resume_yaml != yaml_text:
+            continue
+        if entry.cv_drive_link or (not require_drive_link and entry.pdf_path):
+            return entry
     return None
 
 
-def _cluster_cv(job: Job, match, *, resume, complete, settings, storage, drive) -> _ClusterCv:
+def _cluster_cv(
+    job: Job, match, *, resume, complete, settings, storage, drive, cache_entries: list[CvCacheEntry]
+) -> _ClusterCv:
     """Produce the cluster's CV: cache hit → reuse; miss → tailor + render + upload.
 
     Cache reads/writes are best-effort (a storage hiccup must not stop tailoring).
+    A newly-written entry is appended to ``cache_entries`` (the run-scoped
+    snapshot) so a LATER cluster in this same run can still content-dedupe
+    against it without another round-trip.
     """
     s = settings
     key = cv_cache_key([b.id for b in match.top_bullets], match.keywords)
@@ -159,22 +166,22 @@ def _cluster_cv(job: Job, match, *, resume, complete, settings, storage, drive) 
     # of minting a duplicate Drive file — the sheet then shows "same as row N", not a
     # second link to the same document. (The LLM call already happened; this saves the
     # render + upload and keeps one artifact per unique CV.)
-    twin = _identical_cached_cv(storage, yaml_text, require_drive_link=drive is not None)
+    twin = _identical_cached_cv(cache_entries, yaml_text, require_drive_link=drive is not None)
     if twin is not None:
         log.info(
             "identical CV content; reusing existing artifact",
             extra={"company": job.company_name, "twin_key": twin.cache_key},
         )
+        new_entry = CvCacheEntry(
+            cache_key=key,
+            tailored_resume_yaml=yaml_text,
+            cv_drive_link=twin.cv_drive_link,
+            drive_file_id=twin.drive_file_id,
+            pdf_path=twin.pdf_path,
+        )
         try:
-            storage.save_cv_cache(
-                CvCacheEntry(
-                    cache_key=key,
-                    tailored_resume_yaml=yaml_text,
-                    cv_drive_link=twin.cv_drive_link,
-                    drive_file_id=twin.drive_file_id,
-                    pdf_path=twin.pdf_path,
-                )
-            )
+            storage.save_cv_cache(new_entry)
+            cache_entries.append(new_entry)
         except Exception as exc:
             log.warning("cv cache write failed", extra={"error": repr(exc)})
         return _ClusterCv(
@@ -199,16 +206,16 @@ def _cluster_cv(job: Job, match, *, resume, complete, settings, storage, drive) 
         if uploaded is not None:
             drive_link, drive_file_id = uploaded.web_view_link, uploaded.file_id
 
+    new_entry = CvCacheEntry(
+        cache_key=key,
+        tailored_resume_yaml=yaml_text,
+        cv_drive_link=drive_link,
+        drive_file_id=drive_file_id,
+        pdf_path=pdf_path,
+    )
     try:
-        storage.save_cv_cache(
-            CvCacheEntry(
-                cache_key=key,
-                tailored_resume_yaml=yaml_text,
-                cv_drive_link=drive_link,
-                drive_file_id=drive_file_id,
-                pdf_path=pdf_path,
-            )
-        )
+        storage.save_cv_cache(new_entry)
+        cache_entries.append(new_entry)
     except Exception as exc:
         log.warning("cv cache write failed", extra={"error": repr(exc)})
 
@@ -301,10 +308,18 @@ def run(ctx: StageContext) -> StageResult:
     cache_hits = 0
     cv_by_index: dict[int, _ClusterCv] = {}
     storage = ctx.get_storage()
+    # One snapshot for the whole run, not one storage.list_cv_cache() per cluster
+    # cache-miss — _cluster_cv appends its own new entries so later clusters in
+    # this run still content-dedupe correctly against them.
+    try:
+        cache_entries = storage.list_cv_cache()
+    except Exception as exc:
+        log.warning("cv cache list failed; content-dedupe scan skipped", extra={"error": repr(exc)})
+        cache_entries = []
     for cluster in clusters:
         rep_job, rep_match = capped[cluster.representative]
         cv = _cluster_cv(rep_job, rep_match, resume=resume, complete=complete,
-                         settings=s, storage=storage, drive=drive)
+                         settings=s, storage=storage, drive=drive, cache_entries=cache_entries)
         if cv.from_cache:
             cache_hits += 1
         for idx in cluster.members:

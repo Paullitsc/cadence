@@ -130,7 +130,8 @@ def test_identical_cv_content_reuses_twin_artifact(phase2_settings, monkeypatch)
 
     monkeypatch.setattr(match_and_slice, "write_and_render", _no_render)
     cv = match_and_slice._cluster_cv(
-        job, match, resume=resume, complete=None, settings=s, storage=storage, drive=None
+        job, match, resume=resume, complete=None, settings=s, storage=storage, drive=None,
+        cache_entries=storage.entries,
     )
     assert cv.drive_link == "https://drive/twin"
     assert cv.pdf_path == "/old/twin.pdf"
@@ -144,10 +145,42 @@ def test_twin_without_drive_link_not_reused_when_drive_configured():
     from internship_pipeline.models import CvCacheEntry
 
     linkless = CvCacheEntry(cache_key="k", tailored_resume_yaml="cv: x", pdf_path="/x.pdf")
-    storage = _CvCacheStub([linkless])
-    assert match_and_slice._identical_cached_cv(storage, "cv: x", require_drive_link=True) is None
-    hit = match_and_slice._identical_cached_cv(storage, "cv: x", require_drive_link=False)
+    entries = [linkless]
+    assert match_and_slice._identical_cached_cv(entries, "cv: x", require_drive_link=True) is None
+    hit = match_and_slice._identical_cached_cv(entries, "cv: x", require_drive_link=False)
     assert hit is linkless
+
+
+def test_cv_cache_listed_once_per_run_not_once_per_cluster(phase2_settings, monkeypatch):
+    """Multiple cache-miss clusters in one run must share a single
+    storage.list_cv_cache() snapshot, not each re-fetch the whole table."""
+    from internship_pipeline.storage.sqlite_store import SQLiteStore
+
+    calls = []
+    original = SQLiteStore.list_cv_cache
+
+    def counting_list_cv_cache(self):
+        calls.append(1)
+        return original(self)
+
+    monkeypatch.setattr(SQLiteStore, "list_cv_cache", counting_list_cv_cache)
+
+    # Three jobs with unrelated descriptions -> three distinct clusters (no
+    # grouping), each a cache miss on a fresh DB.
+    jobs = [
+        Job(company_name=f"Co{i}", title="Intern", url=f"https://x/{i}", description=desc)
+        for i, desc in enumerate([
+            "Build data pipelines in Python and Kafka on the backend team.",
+            "Barista role preparing espresso drinks at a cafe.",
+            "Groundskeeping and landscaping position outdoors.",
+        ])
+    ]
+    ctx = StageContext(run_id="t4", settings=phase2_settings)
+    ctx.data["new_jobs"] = jobs
+
+    result = match_and_slice.run(ctx)
+    assert result.counts["applications_prepared"] == 3
+    assert len(calls) == 1  # one snapshot for the whole run, not one per cluster
 
 
 def test_application_cap_prepares_only_best_fit(phase2_settings):
