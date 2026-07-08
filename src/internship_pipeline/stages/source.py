@@ -14,8 +14,10 @@ token must not kill the run.
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable
 
 from ..logging_config import get_logger
 from ..models import DATA_JOBS_TOTAL, DATA_NEW_JOBS, Job, StageContext, StageResult
@@ -32,6 +34,15 @@ NAME = "source"
 log = get_logger(__name__)
 
 _BUNDLED_DRY_RUN_JOBS = Path(__file__).resolve().parent.parent / "fixtures" / "dry_run_jobs.json"
+
+# One source's outcome: (label, jobs fetched (empty on failure), did it fail).
+_FetchOutcome = tuple[str, list[Job], bool]
+
+# Cap concurrent connections against public feeds/APIs — parallel enough to turn
+# companies.yaml's serial-fetch minutes into seconds, not so many that a run
+# looks like a burst against any one host (most targets are distinct hosts
+# anyway, but SimplifyJobs-format forks and README repos share raw.githubusercontent.com).
+_MAX_WORKERS = 8
 
 
 def _dry_run_jobs(ctx: StageContext) -> list[Job]:
@@ -53,8 +64,84 @@ def _dry_run_jobs(ctx: StageContext) -> list[Job]:
     return [Job(**d) for d in data]
 
 
+def _fetch_ats(ctx: StageContext, client, target, max_retries: int) -> _FetchOutcome:
+    label = f"{target.ats}:{target.slug}"
+    try:
+        got = fetch_company(client, target, max_retries=max_retries)
+        log.info(
+            "sourced ATS feed",
+            extra={"run_id": ctx.run_id, "company": target.name, "count": len(got)},
+        )
+        return label, got, False
+    except Exception as exc:  # skip-on-error per company
+        log.warning(
+            "ATS feed failed; skipping",
+            extra={"run_id": ctx.run_id, "company": target.name, "error": repr(exc)},
+        )
+        return label, [], True
+
+
+def _fetch_listings(ctx: StageContext, client, url: str, max_retries: int) -> _FetchOutcome:
+    label = f"listings:{repo_slug(url)}"
+    try:
+        got = fetch_simplify(client, url, max_retries=max_retries)
+        log.info(
+            "sourced listings feed", extra={"run_id": ctx.run_id, "feed": label, "count": len(got)}
+        )
+        return label, got, False
+    except Exception as exc:  # skip-on-error per feed
+        log.warning(
+            "listings fetch failed; skipping",
+            extra={"run_id": ctx.run_id, "feed": label, "error": repr(exc)},
+        )
+        return label, [], True
+
+
+def _fetch_readme(ctx: StageContext, client, url: str, max_retries: int) -> _FetchOutcome:
+    slug = repo_slug(url)
+    # Label includes the filename: one repo can hold several lists (e.g.
+    # README.md + README-2027.md).
+    label = f"readme:{slug}:{Path(url).stem}"
+    try:
+        got = fetch_readme_internships(client, url, source=slug, max_retries=max_retries)
+        log.info(
+            "sourced readme table", extra={"run_id": ctx.run_id, "feed": label, "count": len(got)}
+        )
+        return label, got, False
+    except Exception as exc:  # skip-on-error per feed
+        log.warning(
+            "readme fetch failed; skipping",
+            extra={"run_id": ctx.run_id, "feed": label, "error": repr(exc)},
+        )
+        return label, [], True
+
+
+def _fetch_jsearch_source(ctx: StageContext, client, s) -> _FetchOutcome:
+    try:
+        got = fetch_jsearch(
+            client,
+            host=s.jsearch_host,
+            key=s.rapidapi_key,
+            query=s.jsearch_query,
+            num_pages=s.jsearch_pages,
+            max_retries=s.http_max_retries,
+        )
+        log.info("sourced jsearch", extra={"run_id": ctx.run_id, "count": len(got)})
+        return "jsearch", got, False
+    except Exception as exc:
+        log.warning("jsearch fetch failed; skipping", extra={"run_id": ctx.run_id, "error": repr(exc)})
+        return "jsearch", [], True
+
+
 def _collect(ctx: StageContext) -> tuple[list[Job], dict[str, int], list[str]]:
-    """Fetch every configured source, skipping any that fail.
+    """Fetch every configured source CONCURRENTLY, skipping any that fail.
+
+    Each source is I/O-bound (an HTTP call + tenacity retries), so a thread
+    pool turns companies.yaml's minutes of serial fetches into seconds; httpx's
+    ``Client`` is documented thread-safe, so every task shares one connection
+    pool. Each worker catches its own errors and returns a plain outcome tuple
+    instead of mutating shared state, so results are merged back on the main
+    thread with no locking needed.
 
     Returns ``(jobs, per_source, failed_sources)`` — ``failed_sources`` is the
     label of every source that raised, so a persistent outage (a renamed board
@@ -62,72 +149,23 @@ def _collect(ctx: StageContext) -> tuple[list[Job], dict[str, int], list[str]]:
     silently reducing job volume with only a WARNING buried in the logs.
     """
     s = ctx.settings
-    jobs: list[Job] = []
-    per_source: dict[str, int] = {}
-    failed: list[str] = []
     client = build_client(timeout=s.http_timeout)
+    tasks: list[Callable[[], _FetchOutcome]] = []
     try:
         # --- ATS feeds (companies.yaml) ---
         targets = load_companies(s.companies_file, fallback="companies.example.yaml")
         for target in targets:
-            label = f"{target.ats}:{target.slug}"
-            try:
-                got = fetch_company(client, target, max_retries=s.http_max_retries)
-                jobs.extend(got)
-                per_source[label] = len(got)
-                log.info(
-                    "sourced ATS feed",
-                    extra={"run_id": ctx.run_id, "company": target.name, "count": len(got)},
-                )
-            except Exception as exc:  # skip-on-error per company
-                failed.append(label)
-                log.warning(
-                    "ATS feed failed; skipping",
-                    extra={"run_id": ctx.run_id, "company": target.name, "error": repr(exc)},
-                )
+            tasks.append(lambda target=target: _fetch_ats(ctx, client, target, s.http_max_retries))
 
         # --- SimplifyJobs-format listings.json feeds (SimplifyJobs + forks) ---
         if s.enable_simplify:
             for url in [s.simplify_listings_url, *s.extra_listings_url_list]:
-                label = f"listings:{repo_slug(url)}"
-                try:
-                    got = fetch_simplify(client, url, max_retries=s.http_max_retries)
-                    jobs.extend(got)
-                    per_source[label] = len(got)
-                    log.info(
-                        "sourced listings feed",
-                        extra={"run_id": ctx.run_id, "feed": label, "count": len(got)},
-                    )
-                except Exception as exc:  # skip-on-error per feed
-                    failed.append(label)
-                    log.warning(
-                        "listings fetch failed; skipping",
-                        extra={"run_id": ctx.run_id, "feed": label, "error": repr(exc)},
-                    )
+                tasks.append(lambda url=url: _fetch_listings(ctx, client, url, s.http_max_retries))
 
         # --- Curated README internship tables (repos with no JSON feed) ---
         if s.enable_github_readme:
             for url in s.github_readme_url_list:
-                slug = repo_slug(url)
-                # Label includes the filename: one repo can hold several lists
-                # (e.g. README.md + README-2027.md).
-                label = f"readme:{slug}:{Path(url).stem}"
-                try:
-                    got = fetch_readme_internships(
-                        client, url, source=slug, max_retries=s.http_max_retries
-                    )
-                    jobs.extend(got)
-                    per_source[label] = len(got)
-                    log.info(
-                        "sourced readme table",
-                        extra={"run_id": ctx.run_id, "feed": label, "count": len(got)},
-                    )
-                except Exception as exc:  # skip-on-error per feed
-                    failed.append(label)
-                    log.warning(
-                        "readme fetch failed; skipping",
-                        extra={"run_id": ctx.run_id, "feed": label, "error": repr(exc)},
-                    )
+                tasks.append(lambda url=url: _fetch_readme(ctx, client, url, s.http_max_retries))
 
         # --- JSearch (optional, gated) ---
         if s.enable_jsearch:
@@ -137,24 +175,23 @@ def _collect(ctx: StageContext) -> tuple[list[Job], dict[str, int], list[str]]:
                     extra={"run_id": ctx.run_id},
                 )
             else:
-                try:
-                    got = fetch_jsearch(
-                        client,
-                        host=s.jsearch_host,
-                        key=s.rapidapi_key,
-                        query=s.jsearch_query,
-                        num_pages=s.jsearch_pages,
-                        max_retries=s.http_max_retries,
-                    )
+                tasks.append(lambda: _fetch_jsearch_source(ctx, client, s))
+
+        jobs: list[Job] = []
+        per_source: dict[str, int] = {}
+        failed: list[str] = []
+        if tasks:
+            with ThreadPoolExecutor(max_workers=min(_MAX_WORKERS, len(tasks))) as pool:
+                for label, got, did_fail in pool.map(lambda fn: fn(), tasks):
                     jobs.extend(got)
-                    per_source["jsearch"] = len(got)
-                    log.info("sourced jsearch", extra={"run_id": ctx.run_id, "count": len(got)})
-                except Exception as exc:
-                    failed.append("jsearch")
-                    log.warning(
-                        "jsearch fetch failed; skipping",
-                        extra={"run_id": ctx.run_id, "error": repr(exc)},
-                    )
+                    # per_source only gets an entry on SUCCESS (even a legitimate
+                    # zero-result one) — a failed source must NOT show up here, or
+                    # "every source failed" (see run()'s ok= check) could never be
+                    # detected once at least one task had merely been attempted.
+                    if did_fail:
+                        failed.append(label)
+                    else:
+                        per_source[label] = len(got)
     finally:
         client.close()
     return jobs, per_source, failed
