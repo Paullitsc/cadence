@@ -3,15 +3,16 @@
 For each application prepared by ``match_and_slice``, draft answers to the job's
 application questions using ONLY the candidate's real profile (Claude when
 configured; skipped with an empty draft otherwise), and persist them on the
-application row. Where the ATS exposes the job's ACTUAL form questions publicly
-(Greenhouse job-detail API — shape confirmed live; Lever/Ashby expose none), those
-are drafted instead of the standard set; select-type questions (work authorization
-etc.) are never drafted — they're the human's. Everything stays ``pending_review``
-— the system prepares the answers; the human edits and submits. Nothing is ever
-auto-submitted.
+application row. Only jobs whose ACTUAL free-text form questions are visible
+(Greenhouse job-detail API — shape confirmed live; Lever/Ashby expose none) get
+an LLM drafting call — there is no generic fallback question set. Select-type
+questions (work authorization etc.) are never drafted — they're the human's.
+Everything stays ``pending_review`` — the system prepares the answers; the human
+edits and submits. Nothing is ever auto-submitted.
 
-Costs: question FETCHES are free public-API calls; answer drafting is one LLM call
-per job, capped by ``MAX_QUESTION_DRAFTS_PER_RUN`` (best-fit roles first — the
+Costs: question FETCHES are free public-API calls for every prepared Greenhouse
+job; answer drafting is one LLM call per job that has visible questions, capped by
+``MAX_QUESTION_DRAFTS_PER_RUN`` (best-fit roles with questions first — the
 prepared list is already in fit order).
 """
 
@@ -30,7 +31,7 @@ log = get_logger(__name__)
 
 
 def _real_questions(item, ctx: StageContext, client) -> list[str]:
-    """The job's actual form questions where fetchable; [] means use the standard set."""
+    """The job's actual free-text form questions, or [] when not fetchable."""
     if client is None:
         return []
     ref = greenhouse_ref(item.job)
@@ -41,9 +42,9 @@ def _real_questions(item, ctx: StageContext, client) -> list[str]:
         return fetch_greenhouse_questions(
             client, slug=slug, job_id=job_id, max_retries=ctx.settings.http_max_retries
         )
-    except Exception as exc:  # skip-on-error: fall back to the standard questions
+    except Exception as exc:  # skip-on-error: no drafting for this job
         log.warning(
-            "question fetch failed; using standard questions",
+            "question fetch failed; skipping answer drafting",
             extra={"run_id": ctx.run_id, "company": item.job.company_name, "error": repr(exc)},
         )
         return []
@@ -56,7 +57,10 @@ def run(ctx: StageContext) -> StageResult:
     prepared = ctx.data.get(DATA_PREPARED, [])
     if not prepared:
         log.info("no prepared applications to draft answers for", extra={"run_id": ctx.run_id})
-        return StageResult(name=NAME, counts={"answers_drafted": 0, "applications_ready": 0})
+        return StageResult(
+            name=NAME,
+            counts={"answers_drafted": 0, "applications_ready": 0, "skipped_no_questions": 0},
+        )
 
     resume = ctx.data.get(DATA_RESUME)
     if resume is None:
@@ -64,7 +68,10 @@ def run(ctx: StageContext) -> StageResult:
             resume = load_master_resume(s.master_resume_file)
         except FileNotFoundError:
             log.warning("master résumé not found; cannot draft answers", extra={"run_id": ctx.run_id})
-            return StageResult(name=NAME, counts={"answers_drafted": 0, "applications_ready": 0})
+            return StageResult(
+                name=NAME,
+                counts={"answers_drafted": 0, "applications_ready": 0, "skipped_no_questions": 0},
+            )
 
     complete = build_default_complete(s)  # None -> answers skipped (empty drafts)
     if complete is None:
@@ -81,32 +88,50 @@ def run(ctx: StageContext) -> StageResult:
     draft_cap = max(0, s.max_question_drafts_per_run)
     drafted = 0
     real_question_jobs = 0
+    skipped_no_questions = 0
     storage = ctx.get_storage()
     try:
-        for index, item in enumerate(prepared):
-            questions = None  # None -> draft_common_answers uses the standard set
+        for item in prepared:
             answers: dict[str, str] = {}
-            if index < draft_cap:
-                real = _real_questions(item, ctx, client)
-                if real:
-                    questions = real
+            questions: list[str] = []
+
+            if complete is not None:
+                questions = _real_questions(item, ctx, client)
+                if questions:
                     real_question_jobs += 1
-                answers = draft_common_answers(
-                    job=item.job,
-                    keywords=item.keywords,
-                    resume=resume,
-                    questions=questions,
-                    complete=complete,
-                )
+                    if drafted < draft_cap:
+                        answers = draft_common_answers(
+                            job=item.job,
+                            keywords=item.keywords,
+                            resume=resume,
+                            questions=questions,
+                            complete=complete,
+                        )
+                        if answers:
+                            drafted += 1
+                    else:
+                        log.info(
+                            "answer draft cap reached; skipping LLM call",
+                            extra={
+                                "run_id": ctx.run_id,
+                                "company": item.job.company_name,
+                                "questions": len(questions),
+                            },
+                        )
+                else:
+                    skipped_no_questions += 1
+
             item.app.drafted_answers = answers
             item.app.status = "pending_review"  # explicit: never auto-submitted
             storage.save_application(item.app)
-            if answers:
-                drafted += 1
             log.info(
                 "prepared application answers",
-                extra={"run_id": ctx.run_id, "company": item.job.company_name,
-                       "answers": len(answers), "real_questions": bool(questions)},
+                extra={
+                    "run_id": ctx.run_id,
+                    "company": item.job.company_name,
+                    "answers": len(answers),
+                    "real_questions": bool(questions),
+                },
             )
     finally:
         if client is not None:
@@ -116,12 +141,7 @@ def run(ctx: StageContext) -> StageResult:
         "answers_drafted": drafted,
         "applications_ready": len(prepared),
         "real_question_jobs": real_question_jobs,
+        "skipped_no_questions": skipped_no_questions,
     }
     log.info("stage done", extra={"run_id": ctx.run_id, "stage": NAME, **counts})
     return StageResult(name=NAME, counts=counts, notes=f"ready={len(prepared)}")
-
-
-if __name__ == "__main__":
-    from ..run_daily import run_single
-
-    raise SystemExit(run_single(NAME))

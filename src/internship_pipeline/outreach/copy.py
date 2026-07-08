@@ -16,6 +16,7 @@ employers, or projects therefore cannot reach a drafted message.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 from ..logging_config import get_logger
@@ -30,25 +31,59 @@ log = get_logger(__name__)
 LINKEDIN_NOTE_LIMIT = 300  # LinkedIn connection-request notes are capped at 300 chars
 
 SYSTEM_INSTRUCTIONS = (
-    "You draft cold outreach for a job-seeking candidate: one short email and one "
-    "LinkedIn connection note. You receive the job, the target company, and the "
-    "candidate's REAL résumé bullets.\n\n"
-    "STRICT RULES — these override anything else:\n"
+    "<role>\n"
+    "You write cold outreach for an internship candidate: one short email and one "
+    "LinkedIn connection note. You receive the job posting, the target company, the "
+    "recipient (when known), and the candidate's REAL résumé bullets. A human "
+    "reviews and sends everything.\n"
+    "</role>\n\n"
+    "<strict_rules>\n"
+    "These override anything else:\n"
     "1. Use ONLY facts supported by the provided bullets/profile. NEVER invent or "
-    "alter experience, metrics, numbers, employers, schools, technologies, or skills.\n"
-    "2. Reference the company by name and the 1-2 most relevant real projects/bullets.\n"
-    "3. Be specific and concise: the email is 4-7 sentences; the LinkedIn note is under "
-    "300 characters. Warm, human, no clichés, no hype, no fabricated flattery.\n"
-    "4. Do not promise anything untrue. Do not claim to have used a technology the "
-    "bullets don't mention.\n\n"
+    "alter experience, metrics, numbers, employers, schools, technologies, or "
+    "skills. Do not claim to have used a technology the bullets don't mention. Do "
+    "not promise anything untrue.\n"
+    "2. Anchor your wording in the job posting's own language and the candidate's "
+    "bullets. Do not import outside knowledge about the company — use only what "
+    "the posting itself says.\n"
+    "3. Reference the company by name and the 1-2 most relevant real bullets.\n"
+    "</strict_rules>\n\n"
+    "<craft>\n"
+    "- Email: 60-120 words, 4-7 short sentences. Short beats clever.\n"
+    "- Subject: at most 8 words, naming the company or the role's specifics. Never "
+    "generic ('Internship Inquiry', 'Opportunity', 'Hello').\n"
+    "- Open with a specific hook: the actual product area, technology, or problem "
+    "this team works on, taken from the posting. Never open with 'I hope this "
+    "email finds you well', 'My name is', or a restatement of the job title alone.\n"
+    "- Then map 1-2 real bullets onto what the role needs, and make the mapping "
+    "explicit: the team is doing X; the candidate built Y.\n"
+    "- Close with ONE low-friction ask — a short call or one specific question "
+    "about the team. Never 'please consider my application'.\n"
+    "- Uniqueness test: if the email would still make sense sent to a different "
+    "company, rewrite it. The hook and the mapping must only fit THIS posting.\n"
+    "- Tone: warm, direct, peer-to-peer. No flattery, no hype, no clichés "
+    "('passionate', 'perfect fit', 'esteemed company').\n"
+    "- LinkedIn note: under 300 characters — one specific hook, one real "
+    "credential, an ask to connect.\n"
+    "</craft>\n\n"
+    "<email_shape>\n"
+    "Hi [first name],\n"
+    "[Hook: the specific thing this team builds or solves, in the posting's own "
+    "words.]\n"
+    "[Mapping: the posting asks for X — I built Y, which did Z (a real bullet).]\n"
+    "[Ask: one specific question, or a short call.]\n"
+    "</email_shape>\n\n"
+    "<output_format>\n"
     'Respond with ONLY a JSON object: {"subject": "<email subject>", "email_body": '
-    '"<email body, no signature block>", "linkedin_note": "<note>"}. No prose.'
+    '"<email body, no signature block>", "linkedin_note": "<note>"}. No prose.\n'
+    "</output_format>"
 )
 
 # Ordinary cold-email vocabulary that is always allowed by the grounding check (so an
 # honest LLM draft is not rejected for using normal English). Fabricated FACTS —
 # metrics, unfamiliar company/school names, un-cited technologies — fall outside this
-# set and the job/profile vocab, so they are what gets caught.
+# set and the job/profile vocab, so they are what gets caught. Deliberately contains
+# NO numbers, no tech terms, and no proper-noun-like words.
 _BOILERPLATE_VOCAB: frozenset[str] = frozenset(
     """
     hi hello hey dear there im interested excited keen drawn admire admired impressed
@@ -63,6 +98,16 @@ _BOILERPLATE_VOCAB: frozenset[str] = frozenset(
     apply hoping look forward glad if open who what where when why how am also just here
     something part role's group org organization spent focused focus lately these those
     strong solid real world hands-on hands
+    ve re ll don isn aren haven wasn weren couldn wouldn shouldn doesn hasn hadn didn won
+    noticed see seeing saw read reading came spotted caught eye stood posting posted
+    listing listed page careers site mission product products platform space problem
+    problems solve solving solves approach challenge challenges match matches matching
+    similar overlap overlaps maps mirrors directly exactly question questions ask asking
+    minutes minute grab coffee schedule week available availability free university
+    college major majoring semester junior senior sophomore freshman appreciate
+    appreciated either way anyway cheers much take taking bit lot sense make makes
+    making get getting hearing moment briefly brief short curious wondering wonder
+    enjoy enjoyed find found based note message
     """.split()
 )
 
@@ -85,6 +130,12 @@ def _first_name(full: str | None) -> str | None:
 
 def _intro(resume: MasterResume) -> str:
     return (resume.summary or "a computer science student").strip().rstrip(".")
+
+
+def _template_variant(job: Job, count: int) -> int:
+    """Stable 0..count-1 index from the job's dedupe key (idempotent per job)."""
+    digest = hashlib.sha256(job.dedupe_key().encode("utf-8")).digest()
+    return int.from_bytes(digest[:4], "big") % count
 
 
 def allowed_vocab(
@@ -153,34 +204,73 @@ def deterministic_email(
 ) -> str:
     greeting = _first_name(contact.name) or "there"
     name = resume.name or "the candidate"
-    body = [
-        f"Hi {greeting},",
-        "",
-        f"I'm {name}, {_intro(resume)}. I'm reaching out about the {job.title} role at "
-        f"{job.company_name} — it lines up closely with what I've been building.",
+    intro = _intro(resume)
+    variant = _template_variant(job, 3)
+
+    openings = [
+        (
+            f"I'm {name}, {intro}. I'm reaching out about the {job.title} role at "
+            f"{job.company_name} — it lines up closely with what I've been building."
+        ),
+        (
+            f"I'm {name}, {intro}. The {job.title} opening at {job.company_name} caught "
+            f"my eye — the work lines up with what I've been building lately."
+        ),
+        (
+            f"I'm {name}, {intro}. I noticed the {job.title} role at {job.company_name} "
+            f"and wanted to reach out — it maps closely to my recent work."
+        ),
     ]
+    project_intros = [
+        "A couple of things I've worked on that feel relevant:",
+        "A few projects that map to what your team is building:",
+        "Some work I've done that feels closely related:",
+    ]
+    asks = [
+        (
+            "I'd love the chance to connect and learn more about the team. Happy to share "
+            "more of my background or a tailored resume."
+        ),
+        (
+            "Would you be open to a quick chat about the team? Happy to share more of my "
+            "background or a tailored resume."
+        ),
+        (
+            "If you have a few minutes, I'd love to hear more about the team. Happy to "
+            "share my background or a tailored resume."
+        ),
+    ]
+
+    body = [f"Hi {greeting},", "", openings[variant]]
     lines = _relevant_lines(top_bullets, max_projects)
     if lines:
-        body += ["", "A couple of things I've worked on that feel relevant:", *lines]
-    body += [
-        "",
-        "I'd love the chance to connect and learn more about the team. Happy to share "
-        "more of my background or a tailored resume.",
-        "",
-        "Best,",
-        name,
-    ]
+        body += ["", project_intros[variant], *lines]
+    body += ["", asks[variant], "", "Best,", name]
     return "\n".join(body)
 
 
 def deterministic_linkedin(job: Job, resume: MasterResume, top_bullets: list[BulletRef], contact: Contact) -> str:
     greeting = _first_name(contact.name)
     name = _first_name(resume.name) or resume.name or "a candidate"
+    intro = _intro(resume)
     lead = f"Hi {greeting} — " if greeting else "Hi — "
-    note = (
-        f"{lead}I'm {name}, {_intro(resume)}. I really admire {job.company_name}'s work "
-        f"and I'm interested in the {job.title} role. Would love to connect!"
-    )
+    variant = _template_variant(job, 3)
+
+    notes = [
+        (
+            f"{lead}I'm {name}, {intro}. I really admire {job.company_name}'s work "
+            f"and I'm interested in the {job.title} role. Would love to connect!"
+        ),
+        (
+            f"{lead}I'm {name}, {intro}. The {job.title} role at {job.company_name} "
+            f"lines up with my background — would love to connect!"
+        ),
+        (
+            f"{lead}I'm {name}, {intro}. I noticed the {job.title} opening at "
+            f"{job.company_name} and would love to connect!"
+        ),
+    ]
+    note = notes[variant]
     if len(note) > LINKEDIN_NOTE_LIMIT:
         note = note[: LINKEDIN_NOTE_LIMIT - 1].rstrip() + "…"
     return note

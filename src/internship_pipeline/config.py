@@ -195,8 +195,9 @@ class Settings(BaseSettings):
     # spreadsheet's cells needs no quota). `drive.file` (not the broader `drive` scope)
     # is enough: it grants access to every file this app itself creates.
     drive_file_scope: str = "https://www.googleapis.com/auth/drive.file"
-    # Cost cap on fetching + LLM-drafting real ATS form questions (per run). Question
-    # FETCHES are free public-API calls; the cap bounds the answer-drafting LLM spend.
+    # Cost cap on LLM-drafting real ATS form answers (per run). Question FETCHES are
+    # free public-API calls for every prepared Greenhouse job; only jobs with visible
+    # free-text questions are drafted, and this cap bounds that LLM spend.
     max_question_drafts_per_run: int = 15
 
     # End-to-end dry-run: exercise every stage from bundled fixtures with zero live creds.

@@ -11,6 +11,7 @@ from internship_pipeline.outreach.contacts import Contact
 from internship_pipeline.outreach.copy import (
     LINKEDIN_NOTE_LIMIT,
     allowed_vocab,
+    deterministic_email,
     deterministic_linkedin,
     draft_outreach_copy,
     is_grounded,
@@ -95,3 +96,22 @@ def test_linkedin_note_respects_length_cap():
     long_job = Job(company_name="A" * 400, title="Backend Intern", url="https://a.com/1")
     note = deterministic_linkedin(long_job, resume, bullets, CONTACT)
     assert len(note) <= LINKEDIN_NOTE_LIMIT and note.endswith("…")
+
+
+def test_deterministic_email_varies_across_jobs_but_is_idempotent():
+    resume, bullets = _setup()
+    job = Job(company_name="Acme Labs", title="Backend Intern", url="https://acme.com/jobs/1")
+
+    email_1 = deterministic_email(job, resume, bullets, CONTACT, max_projects=2)
+    email_2 = deterministic_email(job, resume, bullets, CONTACT, max_projects=2)
+    assert email_1 == email_2  # stable per job
+
+    # Several distinct jobs should hit more than one template variant (3 variants).
+    emails = {
+        deterministic_email(
+            Job(company_name=f"Co{i}", title="Intern", url=f"https://x.dev/job/{i}"),
+            resume, bullets, CONTACT, max_projects=2,
+        )
+        for i in range(12)
+    }
+    assert len(emails) > 1

@@ -31,10 +31,14 @@ from .models import BulletRef, MasterResume
 log = get_logger(__name__)
 
 SYSTEM_INSTRUCTIONS = (
-    "You are a résumé-tailoring assistant. You will receive a job description, a list "
-    "of extracted keywords, and a numbered list of the candidate's REAL résumé bullets "
-    "(each with an id).\n\n"
-    "STRICT RULES — these override any other instruction:\n"
+    "<role>\n"
+    "You are an expert technical résumé writer tailoring an internship candidate's "
+    "résumé to one specific job. You will receive a job description, a list of "
+    "extracted keywords, and a numbered list of the candidate's REAL résumé bullets "
+    "(each with an id). Your output is read by recruiters and ATS keyword scanners.\n"
+    "</role>\n\n"
+    "<strict_rules>\n"
+    "These override any other instruction:\n"
     "1. Select only from the provided bullets, by id. Never invent bullets.\n"
     "2. You may lightly reorder and rephrase for clarity and to surface genuinely "
     "matching keywords, but NEVER invent or alter experience, metrics, numbers, "
@@ -47,10 +51,36 @@ SYSTEM_INSTRUCTIONS = (
     "is. Additionally, wrap in **bold** the words/phrases already in the bullet that "
     "literally match the extracted keywords. Bolding is formatting ONLY — never add, "
     "drop, or reword anything to force a keyword match.\n"
-    "6. Prefer the bullets most relevant to the job. Return at most the requested "
-    "number, ordered strongest first.\n\n"
+    "</strict_rules>\n\n"
+    "<selection_strategy>\n"
+    "1. First identify the job's 3-5 core requirements from the description and "
+    "keywords.\n"
+    "2. Choose bullets that together COVER those distinct requirements. Do not stack "
+    "near-duplicate bullets that prove the same skill twice when another requirement "
+    "is still uncovered.\n"
+    "3. When bullets are otherwise comparable, prefer the one with concrete, "
+    "quantified impact.\n"
+    "4. Order strongest-and-most-relevant first. Return at most the requested "
+    "number; drop only bullets clearly irrelevant to this job — a solid, mostly "
+    "full résumé beats a sparse one.\n"
+    "</selection_strategy>\n\n"
+    "<rephrasing_guidance>\n"
+    "- Mirror the job description's exact terminology ONLY where the bullet already "
+    "demonstrates that thing (e.g. say 'CI/CD' like the JD does if the bullet "
+    "genuinely describes it). Never re-badge unrelated work.\n"
+    "- Start each bullet with a strong action verb; keep it tight (about 1-2 lines).\n"
+    "- If the original wording is already strong, keep it verbatim — rephrase only "
+    "when it clarifies or surfaces a genuine keyword match.\n"
+    "</rephrasing_guidance>\n\n"
+    "<human_review_flag>\n"
+    'Set "human_review" to true when the match is weak or uncertain — e.g. fewer '
+    "than 3 provided bullets genuinely address the job's core requirements, or the "
+    "role's domain is clearly outside the candidate's profile. Otherwise false.\n"
+    "</human_review_flag>\n\n"
+    "<output_format>\n"
     'Respond with ONLY a JSON object of the form: {"selected": [{"id": "<id>", '
-    '"text": "<final bullet text>"}], "human_review": <true|false>}. No prose.'
+    '"text": "<final bullet text>"}], "human_review": <true|false>}. No prose.\n'
+    "</output_format>"
 )
 
 # Markdown [text](url) — the link syntax RenderCV turns into a clickable PDF link.
@@ -158,16 +188,22 @@ def build_system_blocks(resume: MasterResume) -> list[dict]:
 
 
 def build_user_text(jd_text: str, keywords: list[str], candidate_bullets: list[BulletRef], limit: int) -> str:
+    # Long context first, the actual ask last (long-context prompting guidance).
     lines = [
         "JOB DESCRIPTION:",
         jd_text,
         "",
         "EXTRACTED KEYWORDS: " + ", ".join(keywords),
         "",
-        f"CANDIDATE BULLETS (choose at most {limit}, by id):",
+        "CANDIDATE BULLETS:",
     ]
     for ref in candidate_bullets:
         lines.append(f"- [{ref.id}] {ref.text}")
+    lines += [
+        "",
+        f"Select at most {limit} bullets by id, tailored to this job per your "
+        "instructions, and respond with the JSON object only.",
+    ]
     return "\n".join(lines)
 
 

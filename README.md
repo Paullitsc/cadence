@@ -113,10 +113,11 @@ default, `data/pipeline.db`). If Supabase creds are missing it falls back to SQL
 A cost guard caps LLM/render volume: every new job is scored locally, but only the
 top `MAX_APPLICATIONS_PER_RUN` (default 15) by fit get tailoring + a PDF per run.
 
-`prepare_applications()` then drafts answers to standard application questions
-(real-data-only) per job. Everything is written to the `applications` table as
-`pending_review` — **nothing is ever auto-submitted**. High-fit or target-company
-roles are flagged `human_review`.
+`prepare_applications()` then drafts answers to a job's **real** application-form
+questions when Greenhouse exposes them (real-data-only). Jobs with no visible
+free-text questions are skipped — no generic fallback set, no wasted LLM call.
+Everything is written to the `applications` table as `pending_review` — **nothing
+is ever auto-submitted**. High-fit or target-company roles are flagged `human_review`.
 
 Every heavy dependency (`sentence-transformers`, `anthropic`, `rendercv`) is
 lazy-imported and optional — the pipeline always runs with zero credentials. Install
@@ -221,10 +222,12 @@ The two human touchpoints are split by what they're *for*:
 - **Real ATS form questions** (`sourcing/questions.py`). Where Greenhouse exposes a
   job's actual application form (`.../jobs/{id}?questions=true` — response shape
   verified against a live board), `prepare_applications` drafts answers to those
-  free-text questions instead of the standard set (selects like work authorization are
-  never drafted — they're yours). Lever/Ashby's public APIs expose no form fields
-  (checked), so they fall back to the standard questions. Drafted answers land on the
-  **Answers** tab (question, drafted answer, and an *edited-answer column that's yours*).
+  free-text questions only (selects like work authorization are never drafted —
+  they're yours). Lever/Ashby's public APIs expose no form fields (checked), so
+  those jobs are skipped — no generic fallback questions. `MAX_QUESTION_DRAFTS_PER_RUN`
+  caps LLM drafting calls (fetches are free); best-fit jobs with visible questions
+  are drafted first. Drafted answers land on the **Answers** tab (question, drafted
+  answer, and an *edited-answer column that's yours*).
 - **Outreach lands as real Gmail drafts** (`outreach/drafts.py`, flag-gated by
   `OUTREACH_GMAIL_DRAFTS_ENABLED`). Eligible drafts (verified contact, not suppressed)
   are created via the Gmail API `drafts.create` — you open Gmail, edit, and hit send.
@@ -305,7 +308,7 @@ vars. Full manual walkthrough: [`ACTIONS_FOR_PAUL.md`](./ACTIONS_FOR_PAUL.md).
 | `REPLY_SCAN_DAYS`, `REPLY_SCAN_QUERY` | 4 | recruiter-reply Gmail scan window/terms |
 | `TRACKER_SHEETS_ENABLED`, `GOOGLE_SERVICE_ACCOUNT_JSON` (secret), `SHEETS_SPREADSHEET_ID`, `DRIVE_FOLDER_ID` | 5 | Google Sheets tracker + Drive CV store; unset ⇒ sync stage no-ops |
 | `CV_GROUP_SIMILARITY`, `CV_GROUP_KEYWORD_OVERLAP` | 5 | CV grouping thresholds (one tailored CV per cluster of similar JDs) |
-| `MAX_QUESTION_DRAFTS_PER_RUN` | 5 | cap on answer-drafting LLM calls per run (question fetches are free) |
+| `MAX_QUESTION_DRAFTS_PER_RUN` | 5 | cap on answer-drafting LLM calls per run (only jobs with visible Greenhouse questions; fetches are free) |
 | `OUTREACH_GMAIL_DRAFTS_ENABLED` | 5 | land outreach as real Gmail drafts (needs the `gmail.compose` scope — re-mint the token) |
 
 ## Scheduling (GitHub Actions)
