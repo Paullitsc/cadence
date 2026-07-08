@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -135,10 +136,26 @@ class SQLiteStore(Storage):
                 if column not in cols:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
 
-    def _conn(self) -> sqlite3.Connection:
+    @contextmanager
+    def _conn(self) -> Iterator[sqlite3.Connection]:
+        """Open a connection for one operation, committing/rolling back AND
+        closing it when the ``with`` block exits.
+
+        ``sqlite3.Connection`` is itself a context manager, but its
+        ``__exit__`` only handles the transaction (commit on success, rollback
+        on exception) — it does NOT close the connection. Every call site here
+        does ``with self._conn() as conn:``, so without this wrapper every one
+        of those connections would sit open until CPython's refcounting GC
+        happens to collect it (not guaranteed on other implementations, and a
+        real fd/lock leak in the meantime).
+        """
         conn = sqlite3.connect(self.path)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def existing_keys(self, keys: Iterable[str]) -> set[str]:
         key_list = list(keys)
