@@ -54,9 +54,12 @@ CREATE TABLE IF NOT EXISTS applications (
     fit_score            REAL NOT NULL DEFAULT 0,
     keywords             TEXT,               -- JSON array
     tailored_resume_path TEXT,               -- rendered PDF path (nullable)
-    tailored_resume_yaml TEXT,               -- RenderCV YAML (auditable)
+    tailored_resume_yaml TEXT,               -- cv-doc YAML (auditable)
     cv_drive_link        TEXT,               -- Phase 5: durable Drive link to the PDF
     drafted_answers      TEXT,               -- JSON object: question -> answer
+    recommended_bullets  TEXT,               -- JSON array of {id, text} (AI recommendation)
+    final_bullets        TEXT,               -- JSON array of {id, text} (human's selection)
+    reviewed_at          TEXT,               -- when the human submitted the review
     human_review         INTEGER NOT NULL DEFAULT 0,
     status               TEXT NOT NULL DEFAULT 'pending_review',
     created_at           TEXT NOT NULL,
@@ -108,6 +111,7 @@ CREATE TABLE IF NOT EXISTS cv_cache (
     cv_drive_link        TEXT,
     drive_file_id        TEXT,
     pdf_path             TEXT,
+    recommended_bullets  TEXT,               -- JSON array of {id, text}
     created_at           TEXT NOT NULL
 );
 """
@@ -116,8 +120,12 @@ CREATE TABLE IF NOT EXISTS cv_cache (
 # existing local databases pick them up (CREATE TABLE IF NOT EXISTS won't).
 _MIGRATIONS: list[tuple[str, str, str]] = [
     ("applications", "cv_drive_link", "TEXT"),
+    ("applications", "recommended_bullets", "TEXT"),
+    ("applications", "final_bullets", "TEXT"),
+    ("applications", "reviewed_at", "TEXT"),
     ("outreach", "gmail_draft_id", "TEXT"),
     ("outreach", "gmail_draft_link", "TEXT"),
+    ("cv_cache", "recommended_bullets", "TEXT"),
 ]
 
 
@@ -217,6 +225,24 @@ class SQLiteStore(Storage):
                     existing.add(key)  # guard against in-batch duplicates
         return UpsertResult(new=new, seen=len(jobs) - len(new))
 
+    def get_job(self, dedupe_key: str) -> Optional[Job]:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM jobs WHERE dedupe_key=?", (dedupe_key,)
+            ).fetchone()
+        if row is None:
+            return None
+        return Job(
+            company_name=row["company_name"],
+            title=row["title"],
+            url=row["url"],
+            locations=json.loads(row["locations"] or "[]"),
+            date_posted=row["date_posted"],
+            active=bool(row["active"]),
+            source=row["source"],
+            source_feed=row["source_feed"],
+        )
+
     def record_run(self, run: RunRecord) -> None:
         with self._conn() as conn:
             conn.execute(
@@ -243,8 +269,9 @@ class SQLiteStore(Storage):
             conn.execute(
                 "INSERT OR REPLACE INTO applications (dedupe_key, company_name, title, url, "
                 "fit_score, keywords, tailored_resume_path, tailored_resume_yaml, "
-                "cv_drive_link, drafted_answers, human_review, status, created_at, updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "cv_drive_link, drafted_answers, recommended_bullets, final_bullets, "
+                "reviewed_at, human_review, status, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     app.dedupe_key,
                     app.company_name,
@@ -256,6 +283,9 @@ class SQLiteStore(Storage):
                     app.tailored_resume_yaml,
                     app.cv_drive_link,
                     json.dumps(app.drafted_answers),
+                    json.dumps(app.recommended_bullets),
+                    json.dumps(app.final_bullets),
+                    app.reviewed_at,
                     int(app.human_review),
                     app.status,
                     created,
@@ -276,6 +306,9 @@ class SQLiteStore(Storage):
             tailored_resume_yaml=row["tailored_resume_yaml"],
             cv_drive_link=row["cv_drive_link"],
             drafted_answers=json.loads(row["drafted_answers"] or "{}"),
+            recommended_bullets=json.loads(row["recommended_bullets"] or "[]"),
+            final_bullets=json.loads(row["final_bullets"] or "[]"),
+            reviewed_at=row["reviewed_at"],
             human_review=bool(row["human_review"]),
             status=row["status"],
         )
@@ -400,39 +433,37 @@ class SQLiteStore(Storage):
             ).fetchone()
         if row is None:
             return None
+        return self._row_to_cv_cache(row)
+
+    @staticmethod
+    def _row_to_cv_cache(row: sqlite3.Row) -> CvCacheEntry:
         return CvCacheEntry(
             cache_key=row["cache_key"],
             tailored_resume_yaml=row["tailored_resume_yaml"],
             cv_drive_link=row["cv_drive_link"],
             drive_file_id=row["drive_file_id"],
             pdf_path=row["pdf_path"],
+            recommended_bullets=json.loads(row["recommended_bullets"] or "[]"),
         )
 
     def list_cv_cache(self) -> list[CvCacheEntry]:
         with self._conn() as conn:
             rows = conn.execute("SELECT * FROM cv_cache ORDER BY created_at").fetchall()
-        return [
-            CvCacheEntry(
-                cache_key=r["cache_key"],
-                tailored_resume_yaml=r["tailored_resume_yaml"],
-                cv_drive_link=r["cv_drive_link"],
-                drive_file_id=r["drive_file_id"],
-                pdf_path=r["pdf_path"],
-            )
-            for r in rows
-        ]
+        return [self._row_to_cv_cache(r) for r in rows]
 
     def save_cv_cache(self, entry: CvCacheEntry) -> None:
         with self._conn() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO cv_cache (cache_key, tailored_resume_yaml, "
-                "cv_drive_link, drive_file_id, pdf_path, created_at) VALUES (?,?,?,?,?,?)",
+                "cv_drive_link, drive_file_id, pdf_path, recommended_bullets, created_at) "
+                "VALUES (?,?,?,?,?,?,?)",
                 (
                     entry.cache_key,
                     entry.tailored_resume_yaml,
                     entry.cv_drive_link,
                     entry.drive_file_id,
                     entry.pdf_path,
+                    json.dumps(entry.recommended_bullets),
                     _now(),
                 ),
             )

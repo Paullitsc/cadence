@@ -72,10 +72,11 @@ def cluster_jobs(
     return clusters
 
 
-# Bump when the rendered CV's LAYOUT changes (e.g. the compact one-page design):
-# a cached CV embeds the design it was rendered with, so a layout change must
-# invalidate old entries or cache hits keep resurfacing the old-look PDFs.
-CV_LAYOUT_VERSION = "compact-v1"
+# Bump when the rendered CV's LAYOUT changes (e.g. the switch from the RenderCV
+# compact design to the Resume.tex LaTeX template): a cached CV embeds the layout
+# it was rendered with, so a layout change must invalidate old entries or cache
+# hits keep resurfacing the old-look PDFs.
+CV_LAYOUT_VERSION = "latex-v1"
 
 
 def cv_cache_key(bullet_ids: list[str], keywords: list[str]) -> str:

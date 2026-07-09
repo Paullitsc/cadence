@@ -29,8 +29,8 @@ jobs:
       ANTHROPIC_MAX_TOKENS: ${{ vars.ANTHROPIC_MAX_TOKENS || '2048' }}
       FIT_SCORE_THRESHOLD: ${{ vars.FIT_SCORE_THRESHOLD || '0.25' }}
       HIGH_PRIORITY_THRESHOLD: ${{ vars.HIGH_PRIORITY_THRESHOLD || '0.55' }}
-      TOP_K_BULLETS: ${{ vars.TOP_K_BULLETS || '8' }}
-      MAX_TAILORED_BULLETS: ${{ vars.MAX_TAILORED_BULLETS || '10' }}
+      TOP_K_BULLETS: ${{ vars.TOP_K_BULLETS || '24' }}
+      MAX_TAILORED_BULLETS: ${{ vars.MAX_TAILORED_BULLETS || '16' }}
       MAX_APPLICATIONS_PER_RUN: ${{ vars.MAX_APPLICATIONS_PER_RUN || '40' }}
       TARGET_COMPANIES: ${{ vars.TARGET_COMPANIES || '' }}
       APPLICATION_EXPIRY_DAYS: ${{ vars.APPLICATION_EXPIRY_DAYS || '21' }}
@@ -97,6 +97,22 @@ jobs:
         with:
           path: ~/.cache/huggingface
           key: huggingface-${{ runner.os }}-sentence-transformers-all-MiniLM-L6-v2
+
+      # Tectonic compiles the Resume.tex-style CVs (resume/latex.py). It fetches
+      # LaTeX packages on demand into ~/.cache/Tectonic, so cache that too —
+      # without it every run re-downloads the package bundle. If the install
+      # fails the pipeline still runs; PDFs are skipped (YAML/.tex only).
+      - name: Cache Tectonic packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/Tectonic
+          key: tectonic-${{ runner.os }}-v1
+
+      - name: Install tectonic (LaTeX engine)
+        run: |
+          curl --proto '=https' --tlsv1.2 -fsSL https://drop-sh.fullyjustified.net | sh
+          sudo mv tectonic /usr/local/bin/tectonic
+          tectonic --version
 
       # Materialize the Gmail token from a secret (contents of the authorized-user JSON
       # minted locally via `python -m internship_pipeline.outreach.gmail_auth`). If the

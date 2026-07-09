@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from internship_pipeline.resume.loader import all_bullets, load_master_resume
-from internship_pipeline.resume.rendercv import build_rendercv_cv, write_and_render
+from internship_pipeline.resume.render import build_cv_doc, write_and_render
 from internship_pipeline.resume.tailoring import (
     TailoredBullet,
     enforce_grounding,
@@ -33,7 +33,7 @@ def test_markdown_link_urls_extracts_targets():
 # --- project names render as links --------------------------------------------- #
 def test_project_with_url_renders_name_as_markdown_link():
     resume = load_master_resume(FIXTURE)
-    doc = build_rendercv_cv(resume, _tailored(resume))
+    doc = build_cv_doc(resume, _tailored(resume))
     projects = doc["cv"]["sections"]["projects"]
     # fixture project has url -> name becomes [name](url); no ignored bare `url:` key
     assert projects[0]["name"] == "[Query Planner](https://github.com/testcand/query-planner)"
@@ -43,7 +43,7 @@ def test_project_with_url_renders_name_as_markdown_link():
 def test_project_without_url_keeps_plain_name():
     resume = load_master_resume(FIXTURE)
     resume.projects[0].url = None
-    doc = build_rendercv_cv(resume, _tailored(resume))
+    doc = build_cv_doc(resume, _tailored(resume))
     assert doc["cv"]["sections"]["projects"][0]["name"] == "Query Planner"
 
 
@@ -65,7 +65,7 @@ def test_two_roles_at_same_company_keep_separate_highlights():
     )
     resume.experiences.append(second_role)
 
-    doc = build_rendercv_cv(resume, _tailored(resume))
+    doc = build_cv_doc(resume, _tailored(resume))
     entries = doc["cv"]["sections"]["experience"]
     assert len(entries) == 2
     first_highlights = entries[0]["highlights"]
@@ -110,28 +110,30 @@ def test_llm_mangled_link_falls_back_verbatim_end_to_end():
 
 # --- one PDF per job (no overwrite) --------------------------------------------- #
 def test_write_and_render_pins_pdf_per_slug(tmp_path, monkeypatch):
-    import internship_pipeline.resume.rendercv as rc
+    import internship_pipeline.resume.latex as latex
 
     rendered_cmds = []
 
-    def fake_run(cmd, **kwargs):
+    def fake_run(cmd, cwd=None, **kwargs):
         rendered_cmds.append(cmd)
-        # simulate rendercv writing the pinned pdf next to the yaml
-        (tmp_path / cmd[cmd.index("--pdf-path") + 1]).write_bytes(b"%PDF")
+        # simulate the LaTeX engine writing <slug>.pdf next to <slug>.tex
+        (Path(cwd) / cmd[-1]).with_suffix(".pdf").write_bytes(b"%PDF")
 
         class P:
             returncode = 0
             stderr = ""
+            stdout = ""
         return P()
 
-    monkeypatch.setattr(rc.shutil, "which", lambda _: "/usr/bin/rendercv")
-    monkeypatch.setattr(rc.subprocess, "run", fake_run)
+    monkeypatch.setattr(latex.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(latex.subprocess, "run", fake_run)
 
     resume = load_master_resume(FIXTURE)
-    doc = build_rendercv_cv(resume, _tailored(resume))
+    doc = build_cv_doc(resume, _tailored(resume))
     _, pdf_a = write_and_render(doc, str(tmp_path), "job-a")
     _, pdf_b = write_and_render(doc, str(tmp_path), "job-b")
 
     assert pdf_a.endswith("job-a.pdf") and pdf_b.endswith("job-b.pdf")
     assert pdf_a != pdf_b
-    assert "--pdf-path" in rendered_cmds[0]
+    # the engine compiled each job's OWN .tex
+    assert rendered_cmds[0][-1] == "job-a.tex" and rendered_cmds[1][-1] == "job-b.tex"

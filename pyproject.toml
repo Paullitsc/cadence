@@ -21,11 +21,14 @@ dev = [
 # Phase 2 heavy/optional deps. All are lazy-imported: the pipeline (and the test
 # suite) runs without them — embeddings fall back to a deterministic hashing
 # embedder, tailoring/answers to deterministic select-only, and PDF render is
-# skipped (YAML still written). Install the ones you want.
+# skipped (YAML/.tex still written). Install the ones you want.
+# PDF compilation needs a LaTeX engine on PATH (tectonic recommended — `brew
+# install tectonic`; see ACTIONS_FOR_PAUL.md); pypdf reads the page count for
+# the one-page fit trim.
 ml = ["sentence-transformers>=2.2"]       # local embeddings (default backend)
 llm = ["anthropic>=0.40"]                 # Claude Haiku tailoring/answers
-render = ["rendercv[full]>=1.0"]          # YAML -> PDF (full: CLI + Typst engine + fonts)
-phase2 = ["sentence-transformers>=2.2", "anthropic>=0.40", "rendercv[full]>=1.0"]
+render = ["pypdf>=4.0"]                   # page-count for the one-page LaTeX fit
+phase2 = ["sentence-transformers>=2.2", "anthropic>=0.40", "pypdf>=4.0"]
 # Phase 3 outreach. Contact lookup (Hunter/Apollo) needs no extra deps — it reuses the
 # core httpx client. Only the manual Gmail SEND path needs Google's libraries, and they
 # are lazy-imported: drafting (and the whole daily run) works without them.

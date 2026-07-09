@@ -42,6 +42,8 @@ class Experience(BaseModel):
 class Project(BaseModel):
     name: str
     url: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
     bullets: list[Bullet] = Field(default_factory=list)
 
 
@@ -92,7 +94,7 @@ class BulletRef(BaseModel):
     parent: str  # company or project name (display only — see parent_index)
     # Index into resume.experiences / resume.projects (scoped by `source`). The
     # grouping key for regrouping tailored bullets under their entry in
-    # rendercv.py: two experiences at the same company share `parent` (the
+    # render.py: two experiences at the same company share `parent` (the
     # company name) but not `parent_index`, so highlights don't merge across them.
     parent_index: int = 0
 

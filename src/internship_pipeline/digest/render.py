@@ -91,6 +91,7 @@ def render_digest_text(
         f"Internship digest — run {run_id}",
         f"New jobs: {counts.get('new', 0)}",
         f"Applications prepared: {counts.get('applications_prepared', 0)}",
+        f"Awaiting your CV review (make review): {counts.get('applications_pending', 0)}",
         f"LLM calls saved (CV grouping): {counts.get('llm_calls_saved', 0)}",
         f"Outreach drafts awaiting approval: {len(pending_outreach or [])}",
         f"Possible replies to review: {len(replies or [])}",
@@ -99,7 +100,8 @@ def render_digest_text(
         lines.append(f"Application tracker: {sheet_url}")
     lines += [
         "",
-        "Applications live in the tracker sheet. Sending/submitting is always done by you.",
+        "Reviewed applications live in the tracker sheet; pending ones wait in the "
+        "review app. Sending/submitting is always done by you.",
     ]
     return "\n".join(lines)
 

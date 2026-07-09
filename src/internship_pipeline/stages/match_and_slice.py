@@ -3,7 +3,10 @@
 For each newly-sourced job: embed the JD, score job-to-profile fit and retrieve the
 top-K real bullets, extract JD keywords, tailor a one-page résumé from those REAL
 bullets only (Claude Haiku when configured; deterministic select-only otherwise),
-render a PDF with RenderCV, and store a ``pending_review`` application row.
+render a PDF from the Resume.tex-style LaTeX template (trimmed least-relevant-last
+until it fits ONE page), and store a ``pending_review`` application row carrying
+the AI's recommended bullet selection — the human confirms/adjusts it in the local
+review app before the application ever reaches the tracker sheet.
 
 Phase 5 cost saver: before tailoring, the capped job list is CLUSTERED on the JD
 embeddings already computed for scoring (cosine ≥ ``CV_GROUP_SIMILARITY``, with a
@@ -38,7 +41,6 @@ from ..models import (
 )
 from ..resume import (
     all_bullets,
-    build_rendercv_cv,
     get_embedder,
     load_master_resume,
     score_job,
@@ -49,7 +51,7 @@ from ..resume.grouping import cluster_jobs, cv_cache_key
 from ..resume.llm import build_default_complete
 from ..resume.matching import job_text
 from ..resume.models import BulletRef
-from ..resume.rendercv import write_and_render
+from ..resume.render import write_and_render_one_page
 from ..tracker.auth import build_tracker_services, tracker_configured
 from ..tracker.drive import upload_pdf
 from ..triggers import favorability, is_dual_trigger
@@ -82,6 +84,7 @@ class _ClusterCv:
     """One tailored CV, shared by every member of a cluster."""
 
     yaml_text: str
+    bullets: list[dict] = field(default_factory=list)  # {"id","text"} recommendation
     pdf_path: Optional[str] = None
     artifact_path: Optional[str] = None  # what Application.tailored_resume_path records
     drive_link: Optional[str] = None
@@ -143,6 +146,7 @@ def _cluster_cv(
                     log.warning("cv cache update failed", extra={"error": repr(exc)})
         return _ClusterCv(
             yaml_text=entry.tailored_resume_yaml,
+            bullets=entry.recommended_bullets,
             pdf_path=entry.pdf_path,
             artifact_path=entry.pdf_path,
             drive_link=drive_link,
@@ -158,14 +162,19 @@ def _cluster_cv(
         human_review=False,  # per-job priority is applied per member, not baked in here
         max_bullets=s.max_tailored_bullets,
     )
-    cv_doc = build_rendercv_cv(resume, tailored.bullets)
-    yaml_text = to_yaml(cv_doc)
+    # Render the Resume.tex-style PDF, trimming least-relevant-last until it fits
+    # one page — the YAML/recommendation stored below reflect the TRIMMED page.
+    render = write_and_render_one_page(
+        resume, tailored.bullets, s.resume_output_dir, job.dedupe_key()
+    )
+    yaml_text = to_yaml(render.cv_doc)
+    recommendation = [{"id": tb.ref.id, "text": tb.text} for tb in render.bullets]
 
     # Content dedupe: different cache keys (e.g. different JD keyword sets) can still
-    # tailor to a byte-identical CV. Reuse the twin's rendered PDF + Drive link instead
-    # of minting a duplicate Drive file — the sheet then shows "same as row N", not a
-    # second link to the same document. (The LLM call already happened; this saves the
-    # render + upload and keeps one artifact per unique CV.)
+    # tailor to a byte-identical CV. Reuse the twin's Drive link instead of minting a
+    # duplicate Drive file — the sheet then shows "same as row N", not a second link
+    # to the same document. (The LLM call and local render already happened; this
+    # saves the upload and keeps one durable artifact per unique CV.)
     twin = _identical_cached_cv(cache_entries, yaml_text, require_drive_link=drive is not None)
     if twin is not None:
         log.info(
@@ -177,7 +186,8 @@ def _cluster_cv(
             tailored_resume_yaml=yaml_text,
             cv_drive_link=twin.cv_drive_link,
             drive_file_id=twin.drive_file_id,
-            pdf_path=twin.pdf_path,
+            pdf_path=render.pdf_path or twin.pdf_path,
+            recommended_bullets=recommendation,
         )
         try:
             storage.save_cv_cache(new_entry)
@@ -186,23 +196,22 @@ def _cluster_cv(
             log.warning("cv cache write failed", extra={"error": repr(exc)})
         return _ClusterCv(
             yaml_text=yaml_text,
-            pdf_path=twin.pdf_path,
-            artifact_path=twin.pdf_path,
+            bullets=recommendation,
+            pdf_path=render.pdf_path or twin.pdf_path,
+            artifact_path=render.pdf_path or twin.pdf_path,
             drive_link=twin.cv_drive_link,
             used_llm=tailored.used_llm,
             llm_review_flag=tailored.human_review,
         )
 
-    yaml_path, pdf_path = write_and_render(cv_doc, s.resume_output_dir, job.dedupe_key())
-
     drive_link = None
     drive_file_id = None
-    if drive is not None and pdf_path:
+    if drive is not None and render.pdf_path:
         # Named after the CV's cache key (its content identity: bullets +
         # keywords), not the representative job's dedupe key — matches the
         # cache-backfill upload above and stays stable across runs/clusters
         # that reuse this same tailored CV for a different representative job.
-        uploaded = upload_pdf(drive, s.drive_folder_id, pdf_path, f"{key}.pdf")
+        uploaded = upload_pdf(drive, s.drive_folder_id, render.pdf_path, f"{key}.pdf")
         if uploaded is not None:
             drive_link, drive_file_id = uploaded.web_view_link, uploaded.file_id
 
@@ -211,7 +220,8 @@ def _cluster_cv(
         tailored_resume_yaml=yaml_text,
         cv_drive_link=drive_link,
         drive_file_id=drive_file_id,
-        pdf_path=pdf_path,
+        pdf_path=render.pdf_path,
+        recommended_bullets=recommendation,
     )
     try:
         storage.save_cv_cache(new_entry)
@@ -221,8 +231,9 @@ def _cluster_cv(
 
     return _ClusterCv(
         yaml_text=yaml_text,
-        pdf_path=pdf_path,
-        artifact_path=pdf_path or yaml_path,  # always the on-disk artifact
+        bullets=recommendation,
+        pdf_path=render.pdf_path,
+        artifact_path=render.pdf_path or render.yaml_path,  # always the on-disk artifact
         drive_link=drive_link,
         used_llm=tailored.used_llm,
         llm_review_flag=tailored.human_review,
@@ -345,6 +356,7 @@ def run(ctx: StageContext) -> StageResult:
             tailored_resume_path=cv.artifact_path,
             tailored_resume_yaml=cv.yaml_text,
             cv_drive_link=cv.drive_link,
+            recommended_bullets=cv.bullets,
             human_review=high_priority or cv.llm_review_flag,
             status="pending_review",
         )

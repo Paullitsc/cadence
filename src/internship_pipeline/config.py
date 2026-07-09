@@ -86,8 +86,10 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-haiku-4-5"
     anthropic_max_tokens: int = 2048
     # Retrieval / scoring knobs (tune to taste — see ACTIONS_FOR_PAUL.md).
-    top_k_bullets: int = 8
-    max_tailored_bullets: int = 10  # keep the tailored résumé to ~one page
+    # Generous by design: the goal is a FULL single page (Resume.tex carries ~16
+    # bullets), and the render step trims least-relevant-last if the PDF overflows.
+    top_k_bullets: int = 24
+    max_tailored_bullets: int = 16  # fill the page; overflow is trimmed at render
     fit_score_threshold: float = 0.25  # below this, don't prepare an application
     high_priority_threshold: float = 0.55  # at/above this, flag human_review
     # Cost/volume guard: prepare at most this many applications per run, BEST-fit
@@ -199,6 +201,13 @@ class Settings(BaseSettings):
     # free public-API calls for every prepared Greenhouse job; only jobs with visible
     # free-text questions are drafted, and this cap bounds that LLM spend.
     max_question_drafts_per_run: int = 15
+
+    # --- CV review app (local, human-in-the-loop CV selection) ---
+    # `python -m internship_pipeline.review` serves the review UI on localhost:
+    # the AI's recommended experience/project bullets come prechecked, the human
+    # toggles bullets, previews the one-page PDF, and submits — only then does the
+    # application reach the tracker sheet.
+    review_port: int = 8765
 
     # End-to-end dry-run: exercise every stage from bundled fixtures with zero live creds.
     dry_run: bool = False

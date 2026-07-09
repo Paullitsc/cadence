@@ -56,6 +56,15 @@ class Storage(ABC):
         """
 
     @abstractmethod
+    def get_job(self, dedupe_key: str) -> Optional[Job]:
+        """Load a stored job by dedupe key, or None if absent.
+
+        Used to join job details (locations) onto applications synced AFTER
+        their sourcing run — e.g. a reviewed application reaching the tracker
+        sheet days later.
+        """
+
+    @abstractmethod
     def record_run(self, run: RunRecord) -> None:
         """Persist a ``runs`` row for the daily log."""
 

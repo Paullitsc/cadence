@@ -18,24 +18,19 @@ Drive uploads update-by-name rather than duplicating.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 
 import yaml
 
 from ..config import get_settings
 from ..logging_config import configure_logging, get_logger
 from ..models import Application
-from ..resume.rendercv import write_and_render
+from ..resume.render import write_and_render
 from ..storage import Storage, get_storage
-from ..tracker import build_tracker_services, plan_answers_upsert, plan_applications_upsert
+from ..tracker import build_tracker_services
 from ..tracker.drive import upload_pdf
-from ..tracker.sheets import (
-    ANSWERS_TAB,
-    APPLICATIONS_TAB,
-    apply_plan,
-    ensure_tracker_tabs,
-    read_rows,
-)
+from ..tracker.rows import COL_KEY
+from ..tracker.sheets import APPLICATIONS_TAB, read_rows
+from ..tracker.sync import sync_applications_to_sheet
 
 log = get_logger(__name__)
 
@@ -75,24 +70,24 @@ def backfill_application(app: Application, *, settings, storage: Storage, drive)
 
 
 def sync_sheet(apps: list[Application], *, settings, services) -> tuple[int, int]:
-    """Project ``apps`` into the tracker sheet (same upsert rules as the daily stage)."""
+    """Project ``apps`` into the tracker sheet (same upsert rules as the daily stage).
+
+    Review gating: only applications that already HAVE a sheet row (they predate
+    the review workflow) or that the human has reviewed are synced — backfill must
+    not push unreviewed rows the daily stage would refuse.
+    """
     spreadsheet_id = settings.sheets_spreadsheet_id or ""
-    tab_ids = ensure_tracker_tabs(services.sheets, spreadsheet_id)
+    try:
+        existing = read_rows(services.sheets, spreadsheet_id, APPLICATIONS_TAB)
+    except Exception:  # tab doesn't exist yet → nothing predates the review workflow
+        existing = [[]]
+    in_sheet = {
+        row[COL_KEY].strip() for row in existing[1:] if len(row) > COL_KEY and row[COL_KEY].strip()
+    }
+    eligible = [a for a in apps if a.status == "reviewed" or a.dedupe_key in in_sheet]
 
-    answers_plan, anchors = plan_answers_upsert(
-        read_rows(services.sheets, spreadsheet_id, ANSWERS_TAB), apps
-    )
-    apply_plan(services.sheets, spreadsheet_id, ANSWERS_TAB, answers_plan)
-
-    plan = plan_applications_upsert(
-        read_rows(services.sheets, spreadsheet_id, APPLICATIONS_TAB),
-        apps,
-        prepared_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        answers_gid=tab_ids.get(ANSWERS_TAB),
-        answers_rows=anchors,
-    )
-    apply_plan(services.sheets, spreadsheet_id, APPLICATIONS_TAB, plan)
-    return len(plan.appends), len(plan.updates)
+    outcome = sync_applications_to_sheet(services, spreadsheet_id, eligible)
+    return outcome.rows_appended, outcome.cells_filled
 
 
 def main() -> int:

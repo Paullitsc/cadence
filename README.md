@@ -21,7 +21,7 @@ validated facts (API endpoints, costs, legal guardrails) live in
 | ----- | ----- | ----- |
 | 0 | Repo scaffold, tooling, config, logging, models, stage skeleton, tests | ✅ done |
 | 1 | Sourcing + tracking (ATS feeds, SimplifyJobs JSON, dedupe, store, digest) | ✅ done |
-| 2 | Résumé slicing + application drafting (embeddings, Haiku tailoring, RenderCV) | ✅ done |
+| 2 | Résumé slicing + application drafting (embeddings, Haiku tailoring, LaTeX render) | ✅ done |
 | 3 | Outreach drafting (contact lookup, grounded copy, human-gated send) | ✅ done |
 | 4 | Orchestration: dual-trigger, digest email + reply scan, alerts, keep-alive, dry-run | ✅ done |
 | 5 | Google Sheets tracker + Drive CV store, CV grouping/cache, real ATS questions, Gmail outreach drafts, slim digest | ✅ done |
@@ -48,8 +48,9 @@ validated facts (API endpoints, costs, legal guardrails) live in
 │   ├── alerts.py                # Phase 4 failure alert (email impl, slack stub)
 │   ├── sourcing/                # companies loader, http, ATS/Simplify/JSearch fetchers,
 │   │                            #   real Greenhouse form questions (Phase 5)
-│   ├── resume/                  # embeddings, matching, tailoring, RenderCV, answers,
-│   │                            #   CV grouping + cache keys (Phase 5)
+│   ├── resume/                  # embeddings, matching, tailoring, LaTeX render (Resume.tex
+│   │                            #   style), answers, CV grouping + cache keys (Phase 5)
+│   ├── review/                  # local CV review app (pick bullets, preview, submit)
 │   ├── outreach/                # contacts, copy, footer, suppress, gmail, replies, send,
 │   │                            #   Gmail outreach drafts (Phase 5)
 │   ├── tracker/                 # Phase 5: Google Sheets tracker + Drive CV store + backfill
@@ -103,12 +104,17 @@ default, `data/pipeline.db`). If Supabase creds are missing it falls back to SQL
    introduces a token not present in the tailoring input, falling back to the
    verbatim bullet — so no fabricated metric, employer, or skill can reach the
    résumé. With no API key, this degrades to deterministic select-only.
-4. **Render a PDF** — one `rendercv render` CLI call turns the tailored YAML into a
-   per-job PDF (`data/resumes/<job-hash>.pdf`); the artifact path is stored on the
-   application (YAML kept if RenderCV isn't installed). **Links are first-class:**
-   a project's `url:` renders its name as a clickable link, Markdown `[text](url)`
-   inside bullet text renders clickable too, and the grounding guardrail rejects any
-   LLM rephrase that drops or alters a link (verbatim fallback).
+4. **Render a PDF** — the tailored bullets are typeset with the user's own
+   `Resume.tex` LaTeX template (`resume/latex.py`) and compiled with whatever
+   engine is on PATH (tectonic recommended; xelatex/pdflatex also work) into a
+   per-job PDF (`data/resumes/<job-hash>.pdf`). The render **trims
+   least-relevant-last until the page count is exactly one** — the tailoring is
+   deliberately generous (`MAX_TAILORED_BULLETS`, default 16) so the page ends up
+   full, not sparse. With no engine installed the YAML/.tex artifacts are still
+   written. **Links are first-class:** a project's `url:` renders its name as the
+   template's blue `\repolink`, Markdown `[text](url)` inside bullet text renders
+   clickable too, and the grounding guardrail rejects any LLM rephrase that drops
+   or alters a link (verbatim fallback).
 
 A cost guard caps LLM/render volume: every new job is scored locally, but only the
 top `MAX_APPLICATIONS_PER_RUN` (default 15) by fit get tailoring + a PDF per run.
@@ -119,7 +125,15 @@ free-text questions are skipped — no generic fallback set, no wasted LLM call.
 Everything is written to the `applications` table as `pending_review` — **nothing
 is ever auto-submitted**. High-fit or target-company roles are flagged `human_review`.
 
-Every heavy dependency (`sentence-transformers`, `anthropic`, `rendercv`) is
+**Human CV review (`make review`)** — `python -m internship_pipeline.review` opens a
+local web app over the pending applications: the AI's recommended experience/project
+bullets come prechecked (header, education, skills are automatic), you toggle any
+bullet, preview the compiled PDF with a live page count, and hit *Submit* — that
+finalizes the CV, uploads it to Drive (when configured), marks the application
+`reviewed`, and pushes its row to the tracker sheet. **Unreviewed applications never
+reach the sheet**; stale ones simply expire out of the queue.
+
+Every heavy dependency (`sentence-transformers`, `anthropic`, `pypdf`) is
 lazy-imported and optional — the pipeline always runs with zero credentials. Install
 what you want with the extras: `uv sync --extra phase2` (or `--extra ml` / `--extra
 llm` / `--extra render`).

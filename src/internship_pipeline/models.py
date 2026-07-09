@@ -123,13 +123,21 @@ class Application(BaseModel):
     fit_score: float = 0.0
     keywords: list[str] = Field(default_factory=list)
     tailored_resume_path: Optional[str] = None  # rendered PDF (or None if not rendered)
-    tailored_resume_yaml: Optional[str] = None  # RenderCV YAML (auditable source)
+    tailored_resume_yaml: Optional[str] = None  # cv-doc YAML (auditable source)
     # Phase 5: the DURABLE CV artifact. Local paths die with the CI runner; the Drive
     # link is what the Google Sheet shows. Grouped jobs (similar JDs) share one link.
     cv_drive_link: Optional[str] = None
     drafted_answers: dict[str, str] = Field(default_factory=dict)  # question -> answer
+    # CV review workflow: the AI recommends which experience/project bullets to
+    # keep; the human confirms/adjusts in the review app. Each entry is
+    # {"id": <BulletRef id>, "text": <final bullet text>} in priority order.
+    recommended_bullets: list[dict[str, str]] = Field(default_factory=list)
+    final_bullets: list[dict[str, str]] = Field(default_factory=list)  # set on review submit
+    reviewed_at: Optional[str] = None  # ISO timestamp of the human's review submit
     human_review: bool = False  # high-priority role → flagged for a closer human look
-    status: str = "pending_review"  # never auto-submitted
+    # pending_review -> reviewed (human finalized the CV in the review app; only
+    # then does the row reach the tracker sheet) | expired. Never auto-submitted.
+    status: str = "pending_review"
 
 
 def make_outreach_id(dedupe_key: str, channel: str) -> str:
@@ -201,6 +209,10 @@ class CvCacheEntry(BaseModel):
     cv_drive_link: Optional[str] = None  # durable artifact (None on Drive-less local runs)
     drive_file_id: Optional[str] = None
     pdf_path: Optional[str] = None  # local artifact from the run that built it
+    # The selection this CV was tailored from ({"id", "text"} per bullet, priority
+    # order) — reused as the recommendation for every application that reuses the
+    # cached CV, so the review app can precheck it without re-tailoring.
+    recommended_bullets: list[dict[str, str]] = Field(default_factory=list)
 
 
 class RunRecord(BaseModel):

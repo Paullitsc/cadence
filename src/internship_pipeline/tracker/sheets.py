@@ -32,6 +32,33 @@ def _col_letter(col: int) -> str:
     return chr(ord("A") + col)  # the tracker never exceeds 26 columns
 
 
+def _status_dropdown_request(sheet_id: int) -> dict:
+    """Status dropdown (data validation) on every data row.
+
+    Applied on tab creation AND re-applied on every sync (idempotent), so a
+    sheet created before the dropdown existed — or a validation rule someone
+    cleared by hand — gets it back without any manual step.
+    """
+    return {
+        "setDataValidation": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": 1,
+                "startColumnIndex": COL_STATUS,
+                "endColumnIndex": COL_STATUS + 1,
+            },
+            "rule": {
+                "condition": {
+                    "type": "ONE_OF_LIST",
+                    "values": [{"userEnteredValue": s} for s in STATUS_OPTIONS],
+                },
+                "showCustomUi": True,
+                "strict": False,  # the human may type something else; don't fight them
+            },
+        }
+    }
+
+
 def _applications_setup_requests(sheet_id: int) -> list[dict]:
     """One-time setup for a freshly-created Applications tab."""
     requests: list[dict] = [
@@ -42,25 +69,7 @@ def _applications_setup_requests(sheet_id: int) -> list[dict]:
                 "fields": "gridProperties.frozenRowCount",
             }
         },
-        # Status dropdown (data validation) on every data row.
-        {
-            "setDataValidation": {
-                "range": {
-                    "sheetId": sheet_id,
-                    "startRowIndex": 1,
-                    "startColumnIndex": COL_STATUS,
-                    "endColumnIndex": COL_STATUS + 1,
-                },
-                "rule": {
-                    "condition": {
-                        "type": "ONE_OF_LIST",
-                        "values": [{"userEnteredValue": s} for s in STATUS_OPTIONS],
-                    },
-                    "showCustomUi": True,
-                    "strict": False,  # the human may type something else; don't fight them
-                },
-            }
-        },
+        _status_dropdown_request(sheet_id),
         # Hide the dedupe-key column (the upsert identity — not for humans).
         {
             "updateDimensionProperties": {
@@ -121,8 +130,10 @@ def _answers_setup_requests(sheet_id: int) -> list[dict]:
 def ensure_tracker_tabs(sheets: Any, spreadsheet_id: str) -> dict[str, int]:
     """Create the Applications/Answers tabs (with headers + cosmetics) if missing.
 
-    Idempotent: existing tabs are left completely alone (their formatting may have
-    been hand-tuned). Returns ``{tab title: sheetId}`` for both tabs.
+    Idempotent: an existing tab's formatting is left alone (it may have been
+    hand-tuned) with ONE exception — the Status dropdown is re-applied every
+    call, so sheets created before it existed still get it. Returns
+    ``{tab title: sheetId}`` for both tabs.
     """
     meta = (
         sheets.spreadsheets()
@@ -138,6 +149,11 @@ def ensure_tracker_tabs(sheets: Any, spreadsheet_id: str) -> dict[str, int]:
         (ANSWERS_TAB, ANSWERS_HEADERS, _answers_setup_requests),
     ):
         if tab in tab_ids:
+            if tab == APPLICATIONS_TAB:
+                sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body={"requests": [_status_dropdown_request(tab_ids[tab])]},
+                ).execute()
             continue
         resp = (
             sheets.spreadsheets()

@@ -35,9 +35,12 @@ CREATE TABLE IF NOT EXISTS applications (
     fit_score            REAL NOT NULL DEFAULT 0,
     keywords             TEXT,               -- JSON array
     tailored_resume_path TEXT,               -- rendered PDF path (nullable)
-    tailored_resume_yaml TEXT,               -- RenderCV YAML (auditable)
+    tailored_resume_yaml TEXT,               -- cv-doc YAML (auditable)
     cv_drive_link        TEXT,               -- Phase 5: durable Google Drive link to the PDF
     drafted_answers      TEXT,               -- JSON object: question -> answer
+    recommended_bullets  TEXT,               -- JSON array of {id, text} (AI recommendation)
+    final_bullets        TEXT,               -- JSON array of {id, text} (human's selection)
+    reviewed_at          TEXT,               -- when the human submitted the review
     human_review         INTEGER NOT NULL DEFAULT 0,
     status               TEXT NOT NULL DEFAULT 'pending_review',
     created_at           TEXT NOT NULL,
@@ -87,6 +90,7 @@ CREATE TABLE IF NOT EXISTS cv_cache (
     cv_drive_link        TEXT,
     drive_file_id        TEXT,
     pdf_path             TEXT,
+    recommended_bullets  TEXT,               -- JSON array of {id, text}
     created_at           TEXT NOT NULL
 );
 

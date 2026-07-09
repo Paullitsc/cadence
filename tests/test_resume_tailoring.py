@@ -4,7 +4,7 @@ from pathlib import Path
 
 from internship_pipeline.resume.loader import all_bullets, load_master_resume
 from internship_pipeline.resume.matching import content_tokens, extract_keywords
-from internship_pipeline.resume.rendercv import build_rendercv_cv, to_yaml, write_and_render
+from internship_pipeline.resume.render import build_cv_doc, to_yaml, write_and_render
 from internship_pipeline.resume.tailoring import bold_keywords, enforce_grounding, tailor_resume
 
 FIXTURE = str(Path(__file__).parent / "fixtures" / "master_resume_sample.yaml")
@@ -122,14 +122,13 @@ def test_tailoring_drops_unknown_ids_from_llm():
     assert [tb.ref.id for tb in result.bullets] == [bullets[0].id]
 
 
-def test_build_rendercv_cv_shape_and_yaml():
+def test_build_cv_doc_shape_and_yaml():
     resume, bullets, keywords = _setup()
     result = tailor_resume(
         jd_text=JD, keywords=keywords, candidate_bullets=bullets, resume=resume, complete=None,
     )
-    cv_doc = build_rendercv_cv(resume, result.bullets)
+    cv_doc = build_cv_doc(resume, result.bullets)
     assert cv_doc["cv"]["name"] == "Test Candidate"
-    assert cv_doc["design"]["theme"] == "classic"
     sections = cv_doc["cv"]["sections"]
     # experience entries carry the tailored bullets as highlights
     exp = sections["experience"][0]
@@ -142,15 +141,16 @@ def test_build_rendercv_cv_shape_and_yaml():
     assert "Test Candidate" in text
 
 
-def test_write_and_render_writes_yaml_and_skips_pdf_without_cli(tmp_path, monkeypatch):
-    import internship_pipeline.resume.rendercv as rc
+def test_write_and_render_writes_yaml_and_tex_and_skips_pdf_without_engine(tmp_path, monkeypatch):
+    import internship_pipeline.resume.latex as latex
 
-    monkeypatch.setattr(rc.shutil, "which", lambda _: None)  # simulate no rendercv CLI
+    monkeypatch.setattr(latex.shutil, "which", lambda _: None)  # simulate no LaTeX engine
     resume, bullets, keywords = _setup()
     result = tailor_resume(
         jd_text=JD, keywords=keywords, candidate_bullets=bullets, resume=resume, complete=None,
     )
-    cv_doc = build_rendercv_cv(resume, result.bullets)
+    cv_doc = build_cv_doc(resume, result.bullets)
     yaml_path, pdf_path = write_and_render(cv_doc, str(tmp_path), "acme")
     assert Path(yaml_path).exists()
+    assert (tmp_path / "acme.tex").exists()  # the .tex artifact is always written
     assert pdf_path is None

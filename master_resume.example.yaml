@@ -68,6 +68,8 @@ experiences:
 projects:
   - name: Placeholder Project
     url: https://github.com/example/placeholder
+    start_date: "2024-01"     # optional; "YYYY-MM" or "present" (shown like Resume.tex)
+    end_date: present
     bullets:
       - text: "Implemented a SQL query planner in Java for a toy database ([demo](https://example.com/demo))."
         tags: [java, databases, systems]

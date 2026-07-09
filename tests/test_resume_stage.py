@@ -90,13 +90,14 @@ class _CvCacheStub:
         self.saved.append(entry)
 
 
-def test_identical_cv_content_reuses_twin_artifact(phase2_settings, monkeypatch):
+def test_identical_cv_content_reuses_twin_artifact(phase2_settings):
     """A byte-identical CV cached under a DIFFERENT key (different keywords) must
-    reuse the twin's Drive link/PDF instead of rendering + uploading a duplicate."""
+    reuse the twin's Drive link (and PDF, when we produced none locally) instead
+    of minting a duplicate Drive file."""
     from internship_pipeline.models import CvCacheEntry
     from internship_pipeline.resume import (
         all_bullets,
-        build_rendercv_cv,
+        build_cv_doc,
         get_embedder,
         load_master_resume,
         score_job,
@@ -114,28 +115,27 @@ def test_identical_cv_content_reuses_twin_artifact(phase2_settings, monkeypatch)
               description="Build data pipelines in Python and Kafka on the backend team.")
     match = score_job(job, bullets, vectors, embedder, resume=resume, top_k=s.top_k_bullets)
 
-    # Pre-compute the exact YAML _cluster_cv will produce (deterministic, no LLM)
-    # and seed the cache with it under an unrelated key.
+    # Pre-compute the exact YAML _cluster_cv will produce (deterministic, no LLM;
+    # no engine in tests, so no one-page trim) and seed the cache with it under an
+    # unrelated key.
     tailored = tailor_resume(
         jd_text=job_text(job), keywords=match.keywords, candidate_bullets=match.top_bullets,
         resume=resume, complete=None, human_review=False, max_bullets=s.max_tailored_bullets,
     )
-    twin_yaml = to_yaml(build_rendercv_cv(resume, tailored.bullets))
+    twin_yaml = to_yaml(build_cv_doc(resume, tailored.bullets))
     twin = CvCacheEntry(cache_key="other-key", tailored_resume_yaml=twin_yaml,
                         cv_drive_link="https://drive/twin", pdf_path="/old/twin.pdf")
     storage = _CvCacheStub([twin])
 
-    def _no_render(*a, **k):
-        raise AssertionError("identical CV must not be re-rendered")
-
-    monkeypatch.setattr(match_and_slice, "write_and_render", _no_render)
     cv = match_and_slice._cluster_cv(
         job, match, resume=resume, complete=None, settings=s, storage=storage, drive=None,
         cache_entries=storage.entries,
     )
     assert cv.drive_link == "https://drive/twin"
-    assert cv.pdf_path == "/old/twin.pdf"
-    assert cv.from_cache is False  # the LLM/tailoring DID run; only render+upload saved
+    assert cv.pdf_path == "/old/twin.pdf"  # no local PDF (no engine) → the twin's
+    assert cv.from_cache is False  # the tailoring DID run; the Drive upload is saved
+    # The recommendation travels with the CV so the review app can precheck it.
+    assert cv.bullets and cv.bullets[0]["id"] == tailored.bullets[0].ref.id
     # The twin's artifacts were re-cached under this job's own key.
     assert storage.saved and storage.saved[0].cv_drive_link == "https://drive/twin"
 

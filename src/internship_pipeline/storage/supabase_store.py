@@ -167,6 +167,27 @@ class SupabaseStore(Storage):
             resp.raise_for_status()
         return UpsertResult(new=new, seen=seen)
 
+    def get_job(self, dedupe_key: str) -> Optional[Job]:
+        resp = self.client.get(
+            f"{self.base}/jobs",
+            params={"select": "*", "dedupe_key": f"eq.{dedupe_key}", "limit": "1"},
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        if not rows:
+            return None
+        row = rows[0]
+        return Job(
+            company_name=row["company_name"],
+            title=row["title"],
+            url=row["url"],
+            locations=row.get("locations") or [],
+            date_posted=row.get("date_posted"),
+            active=bool(row.get("active", True)),
+            source=row.get("source"),
+            source_feed=row.get("source_feed"),
+        )
+
     def record_run(self, run: RunRecord) -> None:
         body = {
             "run_id": run.run_id,
@@ -197,6 +218,9 @@ class SupabaseStore(Storage):
             "tailored_resume_yaml": app.tailored_resume_yaml,
             "cv_drive_link": app.cv_drive_link,
             "drafted_answers": app.drafted_answers,
+            "recommended_bullets": app.recommended_bullets,
+            "final_bullets": app.final_bullets,
+            "reviewed_at": app.reviewed_at,
             "human_review": app.human_review,
             "status": app.status,
             "updated_at": now,
@@ -223,6 +247,9 @@ class SupabaseStore(Storage):
             tailored_resume_yaml=row.get("tailored_resume_yaml"),
             cv_drive_link=row.get("cv_drive_link"),
             drafted_answers=row.get("drafted_answers") or {},
+            recommended_bullets=row.get("recommended_bullets") or [],
+            final_bullets=row.get("final_bullets") or [],
+            reviewed_at=row.get("reviewed_at"),
             human_review=bool(row.get("human_review")),
             status=row.get("status", "pending_review"),
         )
@@ -335,27 +362,22 @@ class SupabaseStore(Storage):
         rows = resp.json()
         if not rows:
             return None
-        row = rows[0]
+        return self._row_to_cv_cache(rows[0])
+
+    @staticmethod
+    def _row_to_cv_cache(row: dict) -> CvCacheEntry:
         return CvCacheEntry(
             cache_key=row["cache_key"],
             tailored_resume_yaml=row.get("tailored_resume_yaml") or "",
             cv_drive_link=row.get("cv_drive_link"),
             drive_file_id=row.get("drive_file_id"),
             pdf_path=row.get("pdf_path"),
+            recommended_bullets=row.get("recommended_bullets") or [],
         )
 
     def list_cv_cache(self) -> list[CvCacheEntry]:
         rows = self._get_all("cv_cache", {"select": "*", "order": "created_at.asc"})
-        return [
-            CvCacheEntry(
-                cache_key=r["cache_key"],
-                tailored_resume_yaml=r.get("tailored_resume_yaml") or "",
-                cv_drive_link=r.get("cv_drive_link"),
-                drive_file_id=r.get("drive_file_id"),
-                pdf_path=r.get("pdf_path"),
-            )
-            for r in rows
-        ]
+        return [self._row_to_cv_cache(r) for r in rows]
 
     def save_cv_cache(self, entry: CvCacheEntry) -> None:
         resp = self.client.post(
@@ -368,6 +390,7 @@ class SupabaseStore(Storage):
                 "cv_drive_link": entry.cv_drive_link,
                 "drive_file_id": entry.drive_file_id,
                 "pdf_path": entry.pdf_path,
+                "recommended_bullets": entry.recommended_bullets,
             },
         )
         resp.raise_for_status()

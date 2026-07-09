@@ -103,6 +103,15 @@ create table if not exists public.cv_cache (
     created_at           timestamptz not null default now()
 );
 
+-- CV review workflow (assignment 2026-07): the AI recommends which experience/
+-- project bullets to keep; the human confirms in the local review app, and only
+-- reviewed applications reach the tracker sheet. Re-run this file in the Supabase
+-- SQL editor to pick these up (idempotent).
+alter table public.applications add column if not exists recommended_bullets jsonb default '[]'::jsonb;
+alter table public.applications add column if not exists final_bullets jsonb default '[]'::jsonb;
+alter table public.applications add column if not exists reviewed_at text;
+alter table public.cv_cache add column if not exists recommended_bullets jsonb default '[]'::jsonb;
+
 -- This pipeline uses the service-role key (server-side, GitHub Actions secret),
 -- which bypasses Row Level Security. If you later expose these tables to the
 -- anon/public key, enable RLS and add explicit policies first.

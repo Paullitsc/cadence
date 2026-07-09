@@ -39,9 +39,14 @@
     <b>{{ counts.get('applications_prepared', 0) }}</b> applications prepared ·
     <b>{{ counts.get('llm_calls_saved', 0) }}</b> LLM calls saved (CV grouping)
   </div>
+  {% if counts.get('applications_pending', 0) %}
+  <p class="hint"><b>{{ counts.get('applications_pending', 0) }}</b> application(s) are waiting
+    for your CV review — run <code>make review</code> to pick the bullets, check the one-page
+    fit, and push them to the sheet.</p>
+  {% endif %}
   {% if sheet_url %}
   <a class="tracker" href="{{ sheet_url }}">Open the application tracker (Google Sheet) →</a>
-  <p class="hint">Every prepared application is a row there: job link, tailored CV (Drive),
+  <p class="hint">Every application you reviewed is a row there: job link, tailored CV (Drive),
     drafted answers, and your status/notes workflow. Submitting is always your click.</p>
   {% else %}
   <p class="hint">Tracker sheet not configured — applications live in storage
