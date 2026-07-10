@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from internship_pipeline.config import Settings
-from internship_pipeline.models import Job, StageContext
+from internship_pipeline.models import Job, JobSource, StageContext
 from internship_pipeline.stages import match_and_slice, prepare_applications
 from internship_pipeline.storage import get_storage
 
@@ -181,6 +181,32 @@ def test_cv_cache_listed_once_per_run_not_once_per_cluster(phase2_settings, monk
     result = match_and_slice.run(ctx)
     assert result.counts["applications_prepared"] == 3
     assert len(calls) == 1  # one snapshot for the whole run, not one per cluster
+
+
+def test_curated_sourced_jobs_skip_the_fit_threshold(phase2_settings):
+    """Curated feeds (simplify listings.json, README tables, landedhq) are already
+    real, open internships — the fit-score gate must not drop them, even when the
+    JD is a poor semantic match. Non-curated sources keep the gate."""
+    phase2_settings = phase2_settings.model_copy(update={"fit_score_threshold": 0.99})
+    weak_desc = "Barista role preparing espresso drinks at a cafe."
+    jobs = [
+        Job(company_name="CafeCo", title="Barista", url="https://x/ats",
+            description=weak_desc, source_feed=JobSource.GREENHOUSE),
+        Job(company_name="CafeCo", title="Barista", url="https://x/readme",
+            description=weak_desc, source_feed=JobSource.GITHUB_README),
+        Job(company_name="CafeCo", title="Barista", url="https://x/simplify",
+            description=weak_desc, source_feed=JobSource.SIMPLIFY),
+        Job(company_name="CafeCo", title="Barista", url="https://x/landedhq",
+            description=weak_desc, source_feed=JobSource.LANDEDHQ),
+    ]
+    ctx = StageContext(run_id="t5", settings=phase2_settings)
+    ctx.data["new_jobs"] = jobs
+
+    result = match_and_slice.run(ctx)
+    assert result.counts["jobs_scored"] == 4
+    assert result.counts["above_threshold"] == 3  # ATS job filtered, curated ones kept
+    prepared_urls = {p.job.url for p in ctx.data["prepared"]}
+    assert prepared_urls == {"https://x/readme", "https://x/simplify", "https://x/landedhq"}
 
 
 def test_application_cap_prepares_only_best_fit(phase2_settings):

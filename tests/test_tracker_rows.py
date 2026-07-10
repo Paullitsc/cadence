@@ -74,6 +74,24 @@ def test_existing_row_human_cells_never_touched_blank_cells_filled():
     assert cv.row == 2 and "https://drive/f1" in cv.value
 
 
+def test_existing_row_stale_cv_link_is_overwritten():
+    """Re-reviewing an application (e.g. after a renderer change) must replace a
+    stale CV link, not leave it — unlike the other pipeline-owned cells, CV is
+    never just "filled if blank"."""
+    existing_row = [""] * len(HEADERS)
+    existing_row[COL_TITLE] = "Backend Intern"
+    existing_row[COL_CV] = '=HYPERLINK("https://drive/old-rendercv", "CV")'
+    existing_row[COL_KEY] = "k1"
+    plan = plan_applications_upsert(
+        [HEADERS, existing_row],
+        [_app("k1", cv_drive_link="https://drive/new-latex")],
+        prepared_date="2026-07-09",
+    )
+    assert not plan.appends
+    cv = next(u for u in plan.updates if u.col == COL_CV)
+    assert cv.row == 2 and "https://drive/new-latex" in cv.value
+
+
 def test_grouped_jobs_share_cv_as_same_as_row():
     shared = "https://drive/shared"
     plan = plan_applications_upsert(

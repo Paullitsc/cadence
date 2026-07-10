@@ -24,6 +24,14 @@ links:
 summary: >-
   Computer science student focused on backend and distributed systems.
 
+# Optional citizenship line, appended to the summary and tailored PER JOB (not
+# just rendered verbatim like the rest of this file): `citizenship` is used for
+# every role; `citizenship_canada` — if set — replaces it for roles whose
+# location reads as Canadian (see resume/matching.py:is_canadian_job). Leave
+# both unset to omit a citizenship line entirely.
+citizenship: US Citizen
+citizenship_canada: US and Canadian Citizen
+
 # --- Education (rendered verbatim; all real) ---
 education:
   - institution: Placeholder University

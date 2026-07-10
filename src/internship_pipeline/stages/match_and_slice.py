@@ -10,11 +10,24 @@ review app before the application ever reaches the tracker sheet.
 
 Phase 5 cost saver: before tailoring, the capped job list is CLUSTERED on the JD
 embeddings already computed for scoring (cosine ≥ ``CV_GROUP_SIMILARITY``, with a
-keyword-overlap sanity check). One cluster = one tailoring call + one render + one
-Drive upload — every other member reuses the representative's CV. A persistent
-``cv_cache`` (keyed by selected-bullet ids + keyword set) additionally reuses CVs
-across runs. Rendered PDFs are uploaded to the shared Drive folder when the tracker
-is configured — the durable link the sheet shows (local paths die with CI runners).
+keyword-overlap sanity check, AND matching ``is_canadian_job`` — see below). One
+cluster = one tailoring call + one render + one Drive upload — every other member
+reuses the representative's CV. A persistent ``cv_cache`` (keyed by selected-bullet
+ids + keyword set + the Canadian flag) additionally reuses CVs across runs.
+Rendered PDFs are uploaded to the shared Drive folder when the tracker is
+configured — the durable link the sheet shows (local paths die with CI runners).
+
+Each rendered CV's citizenship line is picked by ``is_canadian_job`` (any listed
+location reading as Canadian) — Canadian roles get ``MasterResume.citizenship_canada``,
+everything else gets ``MasterResume.citizenship``. This is why clustering/caching
+gate on it: a US and a Canadian role must never silently share one CV.
+
+Every job is still scored (fit feeds bullet retrieval, sort order, and the
+high-priority flag), but ``fit_score_threshold`` only filters ATS/JSearch jobs —
+curated-source roles (``github_readme`` README tables, ``simplify`` listings.json,
+``landedhq``) skip the gate entirely, since those feeds are already curated to
+real, open internships. ``max_applications_per_run`` still caps how many are
+prepared per run.
 
 Reads ``ctx.data["new_jobs"]`` (from the ``source`` stage) and hands the prepared
 applications to ``prepare_applications`` via ``ctx.data["prepared"]``. Runs fully
@@ -36,6 +49,7 @@ from ..models import (
     Application,
     CvCacheEntry,
     Job,
+    JobSource,
     StageContext,
     StageResult,
 )
@@ -49,7 +63,7 @@ from ..resume import (
 )
 from ..resume.grouping import cluster_jobs, cv_cache_key
 from ..resume.llm import build_default_complete
-from ..resume.matching import job_text
+from ..resume.matching import is_canadian_job, job_text
 from ..resume.models import BulletRef
 from ..resume.render import write_and_render_one_page
 from ..tracker.auth import build_tracker_services, tracker_configured
@@ -57,6 +71,12 @@ from ..tracker.drive import upload_pdf
 from ..triggers import favorability, is_dual_trigger
 
 NAME = "match_and_slice"
+
+# These feeds are curated internship-only lists (GitHub-hosted SimplifyJobs-format
+# listings.json + README tables, plus LandedHQ's job tracker) — every row is
+# already a real, open internship, so the fit-score gate below is skipped for
+# them; it's only there to filter noise out of the ATS/JSearch feeds.
+_CURATED_SOURCES = frozenset({JobSource.GITHUB_README, JobSource.SIMPLIFY, JobSource.LANDEDHQ})
 
 log = get_logger(__name__)
 
@@ -114,17 +134,21 @@ def _identical_cached_cv(
 
 
 def _cluster_cv(
-    job: Job, match, *, resume, complete, settings, storage, drive, cache_entries: list[CvCacheEntry]
+    job: Job, match, *, resume, complete, settings, storage, drive, cache_entries: list[CvCacheEntry],
+    is_canadian: bool = False,
 ) -> _ClusterCv:
     """Produce the cluster's CV: cache hit → reuse; miss → tailor + render + upload.
 
     Cache reads/writes are best-effort (a storage hiccup must not stop tailoring).
     A newly-written entry is appended to ``cache_entries`` (the run-scoped
     snapshot) so a LATER cluster in this same run can still content-dedupe
-    against it without another round-trip.
+    against it without another round-trip. ``is_canadian`` (the cluster's
+    representative job — every member shares the same flag, see ``cluster_jobs``'
+    ``group_keys``) picks the rendered citizenship line and is salted into the
+    cache key so a US and a Canadian job never reuse each other's CV.
     """
     s = settings
-    key = cv_cache_key([b.id for b in match.top_bullets], match.keywords)
+    key = cv_cache_key([b.id for b in match.top_bullets], match.keywords, canadian=is_canadian)
     try:
         entry = storage.get_cv_cache(key)
     except Exception as exc:
@@ -165,7 +189,7 @@ def _cluster_cv(
     # Render the Resume.tex-style PDF, trimming least-relevant-last until it fits
     # one page — the YAML/recommendation stored below reflect the TRIMMED page.
     render = write_and_render_one_page(
-        resume, tailored.bullets, s.resume_output_dir, job.dedupe_key()
+        resume, tailored.bullets, s.resume_output_dir, job.dedupe_key(), is_canadian=is_canadian
     )
     yaml_text = to_yaml(render.cv_doc)
     recommendation = [{"id": tb.ref.id, "text": tb.text} for tb in render.bullets]
@@ -274,7 +298,7 @@ def run(ctx: StageContext) -> StageResult:
         match = score_job(
             job, bullets, bullet_vectors, embedder, resume=resume, top_k=s.top_k_bullets
         )
-        if match.fit_score < s.fit_score_threshold:
+        if job.source_feed not in _CURATED_SOURCES and match.fit_score < s.fit_score_threshold:
             log.info(
                 "below fit threshold; skipping",
                 extra={"run_id": ctx.run_id, "company": job.company_name,
@@ -296,11 +320,15 @@ def run(ctx: StageContext) -> StageResult:
 
     # --- Phase 5: cluster the capped list so similar JDs share ONE tailored CV. ---
     # The vectors were computed for scoring — clustering costs nothing extra.
+    # group_keys=canadian_flags keeps a Canadian and a non-Canadian role from
+    # sharing a CV even with a near-identical JD (the citizenship line differs).
+    canadian_flags = [is_canadian_job(job) for job, _ in capped]
     clusters = cluster_jobs(
         [m.jd_vector for _, m in capped],
         [m.keywords for _, m in capped],
         similarity_threshold=s.cv_group_similarity,
         keyword_overlap_threshold=s.cv_group_keyword_overlap,
+        group_keys=canadian_flags,
     )
     if len(clusters) < len(capped):
         log.info(
@@ -330,7 +358,8 @@ def run(ctx: StageContext) -> StageResult:
     for cluster in clusters:
         rep_job, rep_match = capped[cluster.representative]
         cv = _cluster_cv(rep_job, rep_match, resume=resume, complete=complete,
-                         settings=s, storage=storage, drive=drive, cache_entries=cache_entries)
+                         settings=s, storage=storage, drive=drive, cache_entries=cache_entries,
+                         is_canadian=canadian_flags[cluster.representative])
         if cv.from_cache:
             cache_hits += 1
         for idx in cluster.members:

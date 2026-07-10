@@ -117,6 +117,33 @@ def test_submit_finalizes_and_marks_reviewed(review_app):
     assert Path(stored.tailored_resume_path).exists()
 
 
+def test_submit_distinguishes_broken_tracker_from_unconfigured(tmp_path, resume):
+    """Flags/secret/sheet-id all set (tracker_configured=True) but the client still
+    fails to build (e.g. missing google libraries, bad service-account file) must
+    NOT be reported as "tracker not configured" — that sends the human down the
+    wrong troubleshooting path."""
+    settings = Settings(
+        _env_file=None,
+        storage_backend="sqlite",
+        database_path=str(tmp_path / "pipeline.db"),
+        master_resume_file=FIXTURE,
+        resume_output_dir=str(tmp_path / "resumes"),
+        tracker_sheets_enabled=True,
+        google_service_account_json=str(tmp_path / "does-not-exist.json"),
+        sheets_spreadsheet_id="sheet123",
+    )
+    storage = get_storage(settings)
+    try:
+        review_app = ReviewApp(settings, storage, resume)
+        review_app.storage.save_application(_app(status="pending_review"))
+        result = review_app.submit("k1", ["e0b0"])
+        assert result["sheet_synced"] is False
+        assert result["sheet_error"] is not None
+        assert "not configured" not in result["sheet_error"]
+    finally:
+        storage.close()
+
+
 def test_submit_rejects_unknown_app_and_empty_selection(review_app):
     assert "error" in review_app.submit("nope", ["e0b0"])
     review_app.storage.save_application(_app(status="pending_review"))

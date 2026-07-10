@@ -42,6 +42,7 @@ class JobSource(str, Enum):
     SIMPLIFY = "simplify"  # SimplifyJobs-format listings.json (incl. forks, e.g. vanshb03)
     JSEARCH = "jsearch"  # RapidAPI aggregator (optional)
     GITHUB_README = "github_readme"  # curated README internship tables (no JSON feed)
+    LANDEDHQ = "landedhq"  # landedhq.dev/job-tracker (curated, but account-gated — local-only)
 
 
 def normalize_url(url: str) -> str:

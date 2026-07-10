@@ -141,6 +141,32 @@ def test_build_cv_doc_shape_and_yaml():
     assert "Test Candidate" in text
 
 
+def test_build_cv_doc_citizenship_line_is_conditional():
+    resume, bullets, keywords = _setup()
+    resume = resume.model_copy(update={
+        "citizenship": "US Citizen", "citizenship_canada": "US and Canadian Citizen",
+    })
+    result = tailor_resume(
+        jd_text=JD, keywords=keywords, candidate_bullets=bullets, resume=resume, complete=None,
+    )
+    default_summary = build_cv_doc(resume, result.bullets)["cv"]["sections"]["summary"][0]
+    assert default_summary.endswith("US Citizen.")
+    assert "Canadian" not in default_summary
+
+    canada_summary = build_cv_doc(resume, result.bullets, is_canadian=True)["cv"]["sections"]["summary"][0]
+    assert canada_summary.endswith("US and Canadian Citizen.")
+
+
+def test_build_cv_doc_canadian_falls_back_to_default_citizenship_when_unset():
+    resume, bullets, keywords = _setup()
+    resume = resume.model_copy(update={"citizenship": "US Citizen", "citizenship_canada": None})
+    result = tailor_resume(
+        jd_text=JD, keywords=keywords, candidate_bullets=bullets, resume=resume, complete=None,
+    )
+    summary = build_cv_doc(resume, result.bullets, is_canadian=True)["cv"]["sections"]["summary"][0]
+    assert summary.endswith("US Citizen.")
+
+
 def test_write_and_render_writes_yaml_and_tex_and_skips_pdf_without_engine(tmp_path, monkeypatch):
     import internship_pipeline.resume.latex as latex
 

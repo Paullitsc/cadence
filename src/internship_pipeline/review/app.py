@@ -33,6 +33,7 @@ from ..logging_config import get_logger
 from ..models import Application
 from ..resume import build_cv_doc, load_master_resume, to_yaml, write_and_render
 from ..resume.latex import find_latex_engine, pdf_page_count
+from ..resume.matching import is_canadian_job
 from ..resume.models import MasterResume
 from ..storage import get_storage
 from ..tracker.auth import TrackerServices, build_tracker_services, tracker_configured
@@ -66,6 +67,11 @@ class ReviewApp:
                 self._services = build_tracker_services(self.settings)
         return self._services
 
+    def _is_canadian(self, key: str) -> bool:
+        """Does the job's location call for the Canadian citizenship line?"""
+        job = self.storage.get_job(key)
+        return is_canadian_job(job) if job is not None else False
+
     def preview(self, key: str, ids: list[str]) -> dict:
         app = self.storage.get_application(key)
         if app is None:
@@ -73,7 +79,7 @@ class ReviewApp:
         bullets = selection_to_bullets(self.resume, app, ids)
         if not bullets:
             return {"error": "select at least one bullet"}
-        doc = build_cv_doc(self.resume, bullets)
+        doc = build_cv_doc(self.resume, bullets, is_canadian=self._is_canadian(key))
         _, pdf_path = write_and_render(doc, self.preview_dir, key)
         pages = pdf_page_count(pdf_path) if pdf_path else None
         return {
@@ -91,7 +97,7 @@ class ReviewApp:
         if not bullets:
             return {"error": "select at least one bullet"}
 
-        doc = build_cv_doc(self.resume, bullets)
+        doc = build_cv_doc(self.resume, bullets, is_canadian=self._is_canadian(key))
         yaml_path, pdf_path = write_and_render(doc, self.settings.resume_output_dir, key)
 
         drive_link = None
@@ -114,7 +120,17 @@ class ReviewApp:
 
         sheet_synced = False
         sheet_error = None
-        if services is not None:
+        if services is None and tracker_configured(self.settings):
+            # TRACKER_SHEETS_ENABLED/GOOGLE_SERVICE_ACCOUNT_JSON/SHEETS_SPREADSHEET_ID
+            # are all set, so this isn't "unconfigured" — the client itself failed to
+            # build (missing google-api-python-client/google-auth, a bad service-account
+            # file, ...). See the server log for the exact reason.
+            sheet_error = (
+                "tracker is configured but its client failed to build — check the "
+                "server terminal for the reason (often `uv sync --extra tracker "
+                "--extra gmail`)"
+            )
+        elif services is not None:
             try:
                 locations = {}
                 job = self.storage.get_job(key)
@@ -219,7 +235,7 @@ class ReviewApp:
             title=html.escape(app.title),
             url=html.escape(app.url),
             fit=f"{app.fit_score:.2f}",
-            keywords=html.escape(", ".join(app.keywords[:10])),
+            keywords=html.escape(", ".join(app.keywords)),  # full extracted list — this is the editing view
             full_page_bullets=_FULL_PAGE_BULLETS,
             status_note=status_note,
             entries="".join(blocks),
@@ -468,7 +484,7 @@ async function preview() {{
     const data = await post('/api/preview');
     if (data.error) {{ document.getElementById('result').textContent = data.error; return; }}
     setBadge(data);
-    if (data.pdf) document.getElementById('pdf').src = '/preview/' + KEY + '.pdf#t=' + Date.now();
+    if (data.pdf) document.getElementById('pdf').src = '/preview/' + KEY + '.pdf?t=' + Date.now();
   }} finally {{ b.disabled = false; b.textContent = 'Update preview'; }}
 }}
 async function submitCv() {{

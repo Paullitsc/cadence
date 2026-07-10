@@ -8,6 +8,7 @@ from internship_pipeline.resume.loader import all_bullets, load_master_resume
 from internship_pipeline.resume.matching import (
     content_tokens,
     extract_keywords,
+    is_canadian_job,
     score_job,
     tokenize,
 )
@@ -37,6 +38,19 @@ def test_extract_keywords_prioritizes_tech_terms():
     assert "kafka" in kws
     # a stopword-y filler word should not surface
     assert "must" not in kws
+
+
+def test_is_canadian_job_detects_province_codes_and_country_name():
+    assert is_canadian_job(Job(company_name="Acme", title="Intern", url="https://x/1",
+                                locations=["Montreal, QC"]))
+    assert is_canadian_job(Job(company_name="Acme", title="Intern", url="https://x/2",
+                                locations=["Toronto, ON, Canada"]))
+    assert is_canadian_job(Job(company_name="Acme", title="Intern", url="https://x/3",
+                                locations=["Remote", "Canada"]))
+    assert not is_canadian_job(Job(company_name="Acme", title="Intern", url="https://x/4",
+                                    locations=["Boston, MA"]))
+    assert not is_canadian_job(Job(company_name="Acme", title="Intern", url="https://x/5",
+                                    locations=[]))
 
 
 def test_hashing_embedder_deterministic_and_cosine_in_unit_range():

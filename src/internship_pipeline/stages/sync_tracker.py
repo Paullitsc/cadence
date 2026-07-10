@@ -10,7 +10,8 @@ Storage stays the source of truth; the sheet is a projection.
 
 Upsert is idempotent by the hidden dedupe-key column and NEVER overwrites what the
 human owns: Notes is never written after the initial insert, Status is written once
-as "prepared", and every other pipeline-owned cell is only filled while blank.
+as "prepared", and every other pipeline-owned cell is only filled while blank —
+except the CV cell, which always tracks the latest Drive link.
 
 Zero-credential behavior: with the tracker unconfigured this logs one line and
 no-ops (the pipeline must run end-to-end with zero credentials).
@@ -21,6 +22,7 @@ from __future__ import annotations
 from ..logging_config import get_logger
 from ..models import Application, StageContext, StageResult
 from ..tracker import build_tracker_services
+from ..tracker.sheets import ensure_tracker_tabs
 from ..tracker.sync import sync_applications_to_sheet
 
 NAME = "sync_tracker"
@@ -76,8 +78,15 @@ def run(ctx: StageContext) -> StageResult:
             notes="tracker not configured",
         )
 
+    spreadsheet_id = s.sheets_spreadsheet_id or ""
+
     apps, locations_by_key, cv_links_by_key = _collect_applications(ctx)
     if not apps:
+        # Still worth the round trip: keeps tab cosmetics — chiefly the Status
+        # dropdown — self-healing daily instead of only on the next review submit
+        # (sync_applications_to_sheet, which normally does this, is never reached
+        # below when there's nothing to sync).
+        ensure_tracker_tabs(services.sheets, spreadsheet_id)
         log.info(
             "no reviewed applications to sync (review pending ones via "
             "`python -m internship_pipeline.review`)",
@@ -89,7 +98,7 @@ def run(ctx: StageContext) -> StageResult:
 
     outcome = sync_applications_to_sheet(
         services,
-        s.sheets_spreadsheet_id or "",
+        spreadsheet_id,
         apps,
         locations_by_key=locations_by_key,
         cv_links_by_key=cv_links_by_key,

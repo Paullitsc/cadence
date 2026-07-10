@@ -62,3 +62,28 @@ def test_cache_key_changes_with_inputs():
     base = cv_cache_key(["b1"], ["python"])
     assert cv_cache_key(["b1", "b2"], ["python"]) != base
     assert cv_cache_key(["b1"], ["python", "aws"]) != base
+
+
+def test_cache_key_changes_with_canadian_flag():
+    """A US and a Canadian job must never collide on the same cached CV — the
+    rendered citizenship line differs."""
+    base = cv_cache_key(["b1"], ["python"], canadian=False)
+    assert cv_cache_key(["b1"], ["python"], canadian=True) != base
+
+
+def test_group_keys_split_otherwise_identical_jobs():
+    """Two jobs with identical JD embeddings/keywords must NOT share a cluster
+    (and therefore a CV) when their group_keys differ (e.g. one Canadian, one not)."""
+    vec = [1.0, 0.0, 0.0]
+    clusters = cluster_jobs(
+        [vec, vec], [["python", "aws"], ["python", "aws"]], group_keys=[False, True]
+    )
+    assert len(clusters) == 2
+
+
+def test_group_keys_still_cluster_when_equal():
+    vec = [1.0, 0.0, 0.0]
+    clusters = cluster_jobs(
+        [vec, vec], [["python", "aws"], ["python", "aws"]], group_keys=[True, True]
+    )
+    assert len(clusters) == 1

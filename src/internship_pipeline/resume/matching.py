@@ -34,18 +34,52 @@ STOPWORDS: frozenset[str] = frozenset(
     """.split()
 )
 
-# Small seed vocabulary of common tech keywords. The candidate's real skills/tags are
-# added on top, so extraction favors terms that are genuinely relevant to the profile.
+# Seed vocabulary of common tech keywords, grouped for readability. The candidate's
+# real skills/tags are added on top (see extract_keywords), so extraction favors
+# terms that are genuinely relevant to the profile — this list is what lets a
+# JD-only term (nothing in the candidate's own résumé) still surface as a
+# recognized, boosted keyword. Single tokens only; multi-word phrases live in
+# _TECH_VOCAB_PHRASES below since the tokenizer splits on whitespace.
 _TECH_VOCAB: frozenset[str] = frozenset(
     """
     python java javascript typescript c c++ c# go golang rust ruby php scala kotlin swift
-    sql nosql postgres postgresql mysql sqlite mongodb redis kafka spark hadoop airflow
-    react angular vue node node.js express django flask fastapi spring rails dotnet .net
-    aws gcp azure docker kubernetes k8s terraform linux git ci-cd graphql rest grpc api
-    backend frontend fullstack full-stack distributed-systems microservices ml ai llm
-    machine-learning data data-engineering etl pipelines pipeline testing automation
-    tensorflow pytorch pandas numpy html css agile
+    r matlab perl haskell elixir erlang clojure dart lua bash shell powershell assembly
+    vhdl verilog objective-c groovy julia solidity fortran cobol html css sql nosql plsql
+
+    react angular vue svelte node node.js express nestjs next.js nuxt django flask
+    fastapi spring spring-boot rails laravel symfony dotnet .net gin backend frontend
+    fullstack full-stack mobile ios android flutter react-native xamarin
+
+    ml ai llm nlp data data-engineering etl pipelines pipeline machine-learning
+    tensorflow pytorch keras scikit-learn pandas numpy scipy opencv spark hadoop
+    airflow kafka flink dbt
+
+    postgres postgresql mysql sqlite mongodb redis cassandra dynamodb elasticsearch
+    snowflake bigquery redshift
+
+    aws gcp azure docker kubernetes k8s terraform ansible jenkins helm prometheus
+    grafana nginx linux unix git github gitlab bitbucket ci-cd devops testing automation
+
+    graphql rest grpc api oauth websockets microservices distributed-systems
+
+    algorithms oop functional-programming tdd agile scrum concurrency multithreading
+
+    embedded robotics iot security cybersecurity cryptography networking compilers
+    blockchain web3 fpga
     """.split()
+)
+
+# Legitimate multi-word tech phrases a JD is likely to use verbatim — checked against
+# bigrams (see extract_keywords) since a plain unigram vocab check can't match these.
+_TECH_VOCAB_PHRASES: frozenset[str] = frozenset(
+    {
+        "machine learning", "deep learning", "computer vision",
+        "natural language processing", "reinforcement learning",
+        "data structures", "distributed systems", "system design",
+        "object oriented", "unit testing", "data engineering",
+        "full stack", "front end", "back end", "cloud computing",
+        "version control", "continuous integration", "continuous deployment",
+    }
 )
 
 
@@ -67,7 +101,27 @@ def job_text(job: Job) -> str:
     return " ".join(p for p in parts if p)
 
 
-def extract_keywords(jd_text: str, resume: MasterResume | None = None, top_n: int = 15) -> list[str]:
+_CANADIAN_PROVINCES = frozenset({"ab", "bc", "mb", "nb", "nl", "ns", "nt", "nu", "on", "pe", "qc", "sk", "yt"})
+
+
+def is_canadian_job(job: Job) -> bool:
+    """Heuristic: does any listed location read as Canadian?
+
+    Only decides whether the tailored CV's citizenship line mentions Canadian
+    citizenship (see MasterResume.citizenship_canada) — a false negative just
+    omits it (safe default), so a cheap string check is enough; no geocoding.
+    """
+    for loc in job.locations:
+        low = loc.lower()
+        if "canada" in low:
+            return True
+        parts = [p.strip() for p in low.split(",")]
+        if any(p in _CANADIAN_PROVINCES for p in parts):
+            return True
+    return False
+
+
+def extract_keywords(jd_text: str, resume: MasterResume | None = None, top_n: int = 20) -> list[str]:
     """Extract hard requirement/keyword candidates from a job description.
 
     Deterministic: count unigrams + bigrams, drop stopwords, then rank — terms that
@@ -91,11 +145,12 @@ def extract_keywords(jd_text: str, resume: MasterResume | None = None, top_n: in
     for i, tok in enumerate(toks):
         order.setdefault(tok, i)
         scores[tok] = scores.get(tok, 0.0) + (3.0 if tok in vocab else 1.0)
-    # Bigrams like "distributed systems", "machine learning".
+    # Bigrams like "distributed systems", "machine learning" — boosted the same way
+    # as unigrams when they match a known multi-word tech phrase.
     for i in range(len(toks) - 1):
         bigram = f"{toks[i]} {toks[i + 1]}"
         order.setdefault(bigram, i)
-        scores[bigram] = scores.get(bigram, 0.0) + 1.5
+        scores[bigram] = scores.get(bigram, 0.0) + (3.0 if bigram in _TECH_VOCAB_PHRASES else 1.5)
 
     ranked = sorted(scores, key=lambda k: (-scores[k], order[k]))
     return ranked[:top_n]

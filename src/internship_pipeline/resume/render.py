@@ -52,11 +52,15 @@ def _social_networks(resume: MasterResume) -> list[dict]:
     return out
 
 
-def build_cv_doc(resume: MasterResume, tailored: list[TailoredBullet]) -> dict:
+def build_cv_doc(
+    resume: MasterResume, tailored: list[TailoredBullet], *, is_canadian: bool = False
+) -> dict:
     """Build the cv-doc (``{"cv": ...}``) as a dict.
 
     Only experiences/projects that contributed at least one tailored bullet are
     included; education/skills/header render verbatim from the master résumé.
+    ``is_canadian`` picks the citizenship line appended to the summary — see
+    ``resume.matching.is_canadian_job`` for how a job earns that flag.
     """
     # Regroup tailored bullets under their parent ENTRY (by index, not company/
     # project name — two experiences at the same company must not merge).
@@ -68,8 +72,13 @@ def build_cv_doc(resume: MasterResume, tailored: list[TailoredBullet]) -> dict:
 
     sections: dict[str, list] = {}
 
-    if resume.summary:
-        sections["summary"] = [resume.summary]
+    citizenship = (
+        (resume.citizenship_canada or resume.citizenship) if is_canadian else resume.citizenship
+    )
+    citizenship_sentence = f"{citizenship}." if citizenship else None
+    summary_line = " ".join(p for p in (resume.summary, citizenship_sentence) if p)
+    if summary_line:
+        sections["summary"] = [summary_line]
 
     if resume.education:
         sections["education"] = [
@@ -204,16 +213,18 @@ def write_and_render_one_page(
     slug: str,
     *,
     max_pages: int = 1,
+    is_canadian: bool = False,
 ) -> OnePageRender:
     """Render, then trim least-relevant-last until the PDF fits ``max_pages``.
 
     ``bullets`` must be priority-ordered (as ``tailor_resume`` returns them):
     the trim always drops the LAST bullet. Without an engine (or a readable
     page count) the first render is returned untrimmed — the review app / human
-    still sees the artifacts.
+    still sees the artifacts. ``is_canadian`` passes straight through to
+    ``build_cv_doc`` (the citizenship line).
     """
     kept = list(bullets)
-    doc = build_cv_doc(resume, kept)
+    doc = build_cv_doc(resume, kept, is_canadian=is_canadian)
     yaml_path, pdf_path = write_and_render(doc, out_dir, slug)
 
     if pdf_path is None or find_latex_engine() is None:
@@ -224,7 +235,7 @@ def write_and_render_one_page(
     while pages is not None and pages > max_pages and len(kept) > _MIN_BULLETS:
         kept = kept[:-1]
         dropped += 1
-        doc = build_cv_doc(resume, kept)
+        doc = build_cv_doc(resume, kept, is_canadian=is_canadian)
         yaml_path, pdf_path = write_and_render(doc, out_dir, slug)
         if pdf_path is None:
             break

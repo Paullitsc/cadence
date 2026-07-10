@@ -44,6 +44,7 @@ def cluster_jobs(
     *,
     similarity_threshold: float = 0.9,
     keyword_overlap_threshold: float = 0.5,
+    group_keys: list[object] | None = None,
 ) -> list[CvCluster]:
     """Greedily cluster jobs by JD-embedding similarity + keyword overlap.
 
@@ -52,12 +53,19 @@ def cluster_jobs(
     becomes the representative. A job joins a cluster only if it clears BOTH the
     cosine-similarity threshold against the representative's JD vector AND the
     keyword-overlap sanity check. Deterministic: same inputs, same clusters.
+
+    ``group_keys`` (optional, parallel list) is an exact-match gate checked BEFORE
+    the similarity/keyword tests — e.g. the job's ``is_canadian_job`` flag, so a
+    Canadian and a non-Canadian role never share a CV even if the JDs are near-
+    identical (the rendered citizenship line would otherwise be wrong for one).
     """
     clusters: list[CvCluster] = []
     for i in range(len(jd_vectors)):
         placed = False
         for cluster in clusters:
             rep = cluster.representative
+            if group_keys is not None and group_keys[i] != group_keys[rep]:
+                continue
             if not jd_vectors[i] or not jd_vectors[rep]:
                 continue  # no vector (e.g. empty profile) → never group
             if cosine(jd_vectors[i], jd_vectors[rep]) < similarity_threshold:
@@ -79,18 +87,22 @@ def cluster_jobs(
 CV_LAYOUT_VERSION = "latex-v1"
 
 
-def cv_cache_key(bullet_ids: list[str], keywords: list[str]) -> str:
+def cv_cache_key(bullet_ids: list[str], keywords: list[str], *, canadian: bool = False) -> str:
     """Stable cache key for one tailored CV: the tailoring input's identity.
 
     Selected bullet ids and keywords are treated as SETS (sorted, normalized) so
     retrieval-order jitter doesn't defeat the cache. Same bullets + same keywords
-    ⇒ same key ⇒ the stored CV is reused with no LLM call. The layout version is
+    + same ``canadian`` flag ⇒ same key ⇒ the stored CV is reused with no LLM
+    call. ``canadian`` is salted in so a US job never reuses a Canadian job's
+    cached CV (different citizenship line) or vice versa. The layout version is
     salted in so a design change re-tailors (once per cluster) instead of reusing
     stale-layout artifacts.
     """
     ids = ",".join(sorted({b.strip() for b in bullet_ids if b.strip()}))
     kws = ",".join(sorted({k.strip().lower() for k in keywords if k.strip()}))
     digest = hashlib.sha256(
-        f"layout:{CV_LAYOUT_VERSION}|bullets:{ids}|keywords:{kws}".encode("utf-8")
+        f"layout:{CV_LAYOUT_VERSION}|bullets:{ids}|keywords:{kws}|canadian:{canadian}".encode(
+            "utf-8"
+        )
     )
     return digest.hexdigest()[:24]

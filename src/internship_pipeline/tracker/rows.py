@@ -8,7 +8,9 @@ Upsert contract (assignment A1): rows are keyed by the hidden dedupe-key column.
 Re-runs must never overwrite what the human owns — **Notes is never written after
 the initial insert, Status is written once as "prepared" and then only by the
 human** — and for every other (pipeline-owned) cell the safe rule is: after the
-initial row insert, only fill cells that are still blank.
+initial row insert, only fill cells that are still blank. The CV cell is the one
+exception: it always reflects the latest render, so re-reviewing an application
+(e.g. after a renderer change) overwrites a stale Drive link instead of leaving it.
 """
 
 from __future__ import annotations
@@ -47,9 +49,14 @@ STATUS_OPTIONS: list[str] = [
 # Columns the pipeline may fill on an EXISTING row — only when the cell is blank.
 # Status is included (blank = a row that predates the dropdown); Notes never is.
 _FILL_IF_BLANK: tuple[int, ...] = (
-    COL_TITLE, COL_DATE, COL_COMPANY, COL_LOCATIONS, COL_STATUS, COL_CV,
+    COL_TITLE, COL_DATE, COL_COMPANY, COL_LOCATIONS, COL_STATUS,
     COL_ANSWERS, COL_FIT, COL_KEYWORDS,
 )
+
+# The CV cell always tracks the latest render, even on an existing non-blank row —
+# unlike the other pipeline-owned columns, re-reviewing an application is expected
+# to replace its Drive link (e.g. a renderer change re-uploads a new PDF).
+_ALWAYS_REFRESH: tuple[int, ...] = (COL_CV,)
 
 ANSWERS_HEADERS: list[str] = [
     "Dedupe key",
@@ -158,8 +165,9 @@ def plan_applications_upsert(
     header row; sheet row numbers are therefore ``index + 1``).
 
     * unknown dedupe key → append a full row (Status starts at "prepared");
-    * known dedupe key → fill only BLANK pipeline-owned cells; Notes untouched,
-      a human-set Status untouched;
+    * known dedupe key → fill only BLANK pipeline-owned cells (Notes untouched,
+      a human-set Status untouched), EXCEPT the CV cell, which always overwrites
+      to the latest Drive link;
     * two apps sharing one ``cv_drive_link`` → the later row reads ``same as row N``.
 
     ``locations_by_key`` supplies job locations (the Application row doesn't carry
@@ -222,6 +230,9 @@ def plan_applications_upsert(
         fresh[COL_LOCATIONS] = locations
         for col in _FILL_IF_BLANK:
             if _cell(current, col) == "" and fresh[col]:
+                plan.updates.append(CellUpdate(row=row_number, col=col, value=fresh[col]))
+        for col in _ALWAYS_REFRESH:
+            if fresh[col] and fresh[col] != _cell(current, col):
                 plan.updates.append(CellUpdate(row=row_number, col=col, value=fresh[col]))
     return plan
 

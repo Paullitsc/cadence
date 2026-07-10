@@ -195,9 +195,9 @@ def test_one_page_render_trims_least_relevant_last(tmp_path, monkeypatch):
     import internship_pipeline.resume.render as render
     real_build = render.build_cv_doc
 
-    def tracking_build(res, tb):
+    def tracking_build(res, tb, **kwargs):
         state["kept"] = len(tb)
-        return real_build(res, tb)
+        return real_build(res, tb, **kwargs)
 
     state["kept"] = len(bullets)
     monkeypatch.setattr(render, "build_cv_doc", tracking_build)

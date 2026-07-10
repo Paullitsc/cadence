@@ -3,9 +3,12 @@
 Pull public ATS JSON feeds (Greenhouse/Lever/Ashby) per ``companies.yaml``, the
 SimplifyJobs-format ``listings.json`` feeds (SimplifyJobs + same-format forks such
 as vanshb03/Summer2027-Internships), curated README internship tables (e.g.
-negarprh/Canadian-Tech-Internships-2026), and optionally JSearch; normalize to
-``Job``, dedupe by stable hash, and persist. New roles (not previously stored) are
-handed to the digest stage via ``ctx.data["new_jobs"]``.
+negarprh/Canadian-Tech-Internships-2026), and optionally JSearch or LandedHQ;
+normalize to ``Job``, dedupe by stable hash, and persist. New roles (not
+previously stored) are handed to the digest stage via ``ctx.data["new_jobs"]``.
+LandedHQ is the odd one out: its jobs sit behind a real account (no public
+feed), so it's off by default and meant to run from a local ``.env`` only —
+see ``sourcing/landedhq.py``.
 
 Every source is wrapped so one failing feed is logged and skipped — a bad board
 token must not kill the run.
@@ -26,6 +29,7 @@ from ..sourcing.companies import load_companies
 from ..sourcing.github_readme import fetch_readme_internships
 from ..sourcing.http import build_client
 from ..sourcing.jsearch import fetch_jsearch
+from ..sourcing.landedhq import fetch_landedhq
 from ..sourcing.simplify import fetch_simplify
 from ..sourcing.util import repo_slug
 
@@ -133,6 +137,22 @@ def _fetch_jsearch_source(ctx: StageContext, client, s) -> _FetchOutcome:
         return "jsearch", [], True
 
 
+def _fetch_landedhq_source(ctx: StageContext, client, s) -> _FetchOutcome:
+    try:
+        got = fetch_landedhq(
+            client, email=s.landedhq_email, password=s.landedhq_password,
+            max_retries=s.http_max_retries,
+        )
+        log.info("sourced landedhq", extra={"run_id": ctx.run_id, "count": len(got)})
+        # A bad password fails sign-in gracefully (fetch_landedhq returns []) rather
+        # than raising, so it would otherwise look like a legitimate zero-result run —
+        # flag it as failed instead so it surfaces in sources_failed/the digest.
+        return "landedhq", got, not got
+    except Exception as exc:
+        log.warning("landedhq fetch failed; skipping", extra={"run_id": ctx.run_id, "error": repr(exc)})
+        return "landedhq", [], True
+
+
 def _collect(ctx: StageContext) -> tuple[list[Job], dict[str, int], list[str]]:
     """Fetch every configured source CONCURRENTLY, skipping any that fail.
 
@@ -176,6 +196,16 @@ def _collect(ctx: StageContext) -> tuple[list[Job], dict[str, int], list[str]]:
                 )
             else:
                 tasks.append(lambda: _fetch_jsearch_source(ctx, client, s))
+
+        # --- LandedHQ (optional, gated — local-only by convention; see config.py) ---
+        if s.enable_landedhq:
+            if not (s.landedhq_email and s.landedhq_password):
+                log.info(
+                    "landedhq enabled but LANDEDHQ_EMAIL/LANDEDHQ_PASSWORD unset; skipping",
+                    extra={"run_id": ctx.run_id},
+                )
+            else:
+                tasks.append(lambda: _fetch_landedhq_source(ctx, client, s))
 
         jobs: list[Job] = []
         per_source: dict[str, int] = {}

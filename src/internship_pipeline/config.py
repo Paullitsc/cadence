@@ -65,6 +65,15 @@ class Settings(BaseSettings):
     jsearch_host: str = "jsearch.p.rapidapi.com"
     jsearch_query: str = "software engineer intern"
     jsearch_pages: int = 1
+    # LandedHQ's job tracker (landedhq.dev/job-tracker) — curated internships, but
+    # unlike every other feed the data sits behind a real signed-in account (Supabase
+    # Row-Level-Security blocks anonymous reads; confirmed live). Off by default and
+    # meant to STAY local-only: set these in your local .env, never in GitHub Secrets
+    # — see ACTIONS_FOR_PAUL.md. The daily CI run has no way to pick this up unless
+    # you deliberately add the secrets there yourself.
+    enable_landedhq: bool = False
+    landedhq_email: Optional[str] = None
+    landedhq_password: Optional[str] = None
 
     # HTTP + digest
     http_timeout: float = 20.0

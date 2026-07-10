@@ -72,6 +72,11 @@ class MasterResume(BaseModel):
     location: Optional[str] = None
     links: Links = Field(default_factory=Links)
     summary: Optional[str] = None
+    # Citizenship is tailored per-job (see resume/matching.py:is_canadian_job) rather
+    # than baked into `summary` — most roles only need the default line, Canadian
+    # roles get the fuller one. `citizenship_canada` falls back to `citizenship` when unset.
+    citizenship: Optional[str] = None
+    citizenship_canada: Optional[str] = None
     education: list[Education] = Field(default_factory=list)
     experiences: list[Experience] = Field(default_factory=list)
     projects: list[Project] = Field(default_factory=list)
