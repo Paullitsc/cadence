@@ -245,7 +245,18 @@ def tailor_resume(
 
     system_blocks = build_system_blocks(resume)
     user_text = build_user_text(jd_text, keywords, candidate_bullets, max_bullets)
-    data = complete(system_blocks, user_text)
+    try:
+        data = complete(system_blocks, user_text)
+    except Exception as exc:  # one bad LLM response must not kill the whole stage
+        log.warning(
+            "tailoring LLM call failed; using verbatim top bullets",
+            extra={"error": repr(exc)},
+        )
+        return TailorResult(
+            bullets=_verbatim(candidate_bullets[:max_bullets]),
+            human_review=human_review,
+            used_llm=False,
+        )
 
     selected = data.get("selected") if isinstance(data, dict) else None
     if not isinstance(selected, list):

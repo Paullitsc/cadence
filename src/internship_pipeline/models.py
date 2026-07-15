@@ -137,7 +137,9 @@ class Application(BaseModel):
     reviewed_at: Optional[str] = None  # ISO timestamp of the human's review submit
     human_review: bool = False  # high-priority role → flagged for a closer human look
     # pending_review -> reviewed (human finalized the CV in the review app; only
-    # then does the row reach the tracker sheet) | expired. Never auto-submitted.
+    # then does the row reach the tracker sheet) | expired | rejected (human set
+    # the sheet row's Status dropdown to "rejected" — the sync removed the row,
+    # and this status keeps it from ever coming back). Never auto-submitted.
     status: str = "pending_review"
 
 

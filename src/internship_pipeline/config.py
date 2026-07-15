@@ -93,7 +93,13 @@ class Settings(BaseSettings):
     # constant so the model can be swapped without touching code. VERIFY the id in
     # the Anthropic Console if it differs (ACTIONS_FOR_PAUL.md).
     anthropic_model: str = "claude-haiku-4-5"
-    anthropic_max_tokens: int = 2048
+    # Newer models (claude-sonnet-5) emit a THINKING block before the JSON answer,
+    # and max_tokens caps both: at 2048 the whole budget could go to thinking and
+    # the response carried no text at all — the July 2026 "no JSON object found"
+    # outage. A typical 16-bullet tailoring call measured ~3.9k output tokens
+    # (thinking + JSON); 8192 gives real headroom, and billing is per token
+    # actually generated, so unused headroom costs nothing.
+    anthropic_max_tokens: int = 8192
     # Retrieval / scoring knobs (tune to taste — see ACTIONS_FOR_PAUL.md).
     # Generous by design: the goal is a FULL single page (Resume.tex carries ~16
     # bullets), and the render step trims least-relevant-last if the PDF overflows.

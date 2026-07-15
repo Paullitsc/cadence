@@ -145,6 +145,7 @@ class ReviewApp:
                     services,
                     self.settings.sheets_spreadsheet_id or "",
                     [app],
+                    storage=self.storage,
                     locations_by_key=locations,
                     cv_links_by_key=cv_links,
                 )
@@ -178,7 +179,10 @@ class ReviewApp:
                 return '<tr><td colspan="5" class="empty">none</td></tr>'
             out = []
             for a in apps:
-                kw = ", ".join(a.keywords[:6])
+                # Full extracted keyword list (~20): this is the human's triage
+                # view, and seeing what the JD wants is how they pick what to
+                # customize — truncating it hid the signal.
+                kw = ", ".join(a.keywords)
                 out.append(
                     "<tr>"
                     f"<td>{html.escape(a.company_name)}</td>"

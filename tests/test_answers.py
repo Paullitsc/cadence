@@ -47,3 +47,17 @@ def test_empty_string_answers_are_dropped():
         questions=questions, complete=fake_complete,
     )
     assert out == {"Why us?": "The backend work matches my pipeline project."}
+
+
+def test_llm_failure_returns_empty_draft_instead_of_raising():
+    """A failed drafting call leaves the questions to the human — never kills the stage."""
+
+    def boom(system_blocks, user_text):
+        raise ValueError("no JSON object found in model response")
+
+    resume = load_master_resume(FIXTURE)
+    out = draft_common_answers(
+        job=JOB, keywords=["python"], resume=resume,
+        questions=["Why us?"], complete=boom,
+    )
+    assert out == {}

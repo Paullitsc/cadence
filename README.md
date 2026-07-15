@@ -219,7 +219,10 @@ The two human touchpoints are split by what they're *for*:
   the pipeline never touches, the **CV** link (durable, in Google Drive), a link to the
   drafted **Answers** tab, fit score, and JD keywords. Upsert is idempotent by a hidden
   dedupe-key column, and after the initial insert the pipeline only fills cells that are
-  still blank — your edits always win. Storage (Supabase/SQLite) stays the source of
+  still blank — your edits always win. Setting a row's Status to **`rejected`** is the
+  one action the pipeline acts on: the next sync (daily, or any review submit) deletes
+  that row from the sheet and marks the stored application `rejected` so it never comes
+  back — storage keeps the history. Storage (Supabase/SQLite) stays the source of
   truth; the sheet is a projection.
 - **Durable CVs in Drive** (`tracker/drive.py`). Tailored PDFs used to die with the
   ephemeral CI runner (artifacts can't be published — public repo, PII). Now each

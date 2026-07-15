@@ -16,9 +16,12 @@ empty answers are dropped here, so those land in the tracker for the human.
 
 from __future__ import annotations
 
+from ..logging_config import get_logger
 from ..models import Job
 from .llm import CompleteFn, resume_system_blocks
 from .models import MasterResume
+
+log = get_logger(__name__)
 
 SYSTEM_INSTRUCTIONS = (
     "<role>\n"
@@ -102,7 +105,14 @@ def draft_common_answers(
 
     system_blocks = build_system_blocks(resume)
     user_text = build_user_text(job, keywords, questions)
-    data = complete(system_blocks, user_text)
+    try:
+        data = complete(system_blocks, user_text)
+    except Exception as exc:  # one bad LLM response must not kill the whole stage
+        log.warning(
+            "answer drafting LLM call failed; leaving the questions to the human",
+            extra={"company": job.company_name, "error": repr(exc)},
+        )
+        return {}
 
     answers = data.get("answers") if isinstance(data, dict) else None
     if not isinstance(answers, dict):

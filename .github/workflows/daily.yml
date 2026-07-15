@@ -26,7 +26,7 @@ jobs:
       LOG_LEVEL: INFO
       # --- Phase 2: résumé matching / tailoring ---
       ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL || 'claude-haiku-4-5' }}
-      ANTHROPIC_MAX_TOKENS: ${{ vars.ANTHROPIC_MAX_TOKENS || '2048' }}
+      ANTHROPIC_MAX_TOKENS: ${{ vars.ANTHROPIC_MAX_TOKENS || '8192' }}
       FIT_SCORE_THRESHOLD: ${{ vars.FIT_SCORE_THRESHOLD || '0.25' }}
       HIGH_PRIORITY_THRESHOLD: ${{ vars.HIGH_PRIORITY_THRESHOLD || '0.55' }}
       TOP_K_BULLETS: ${{ vars.TOP_K_BULLETS || '24' }}

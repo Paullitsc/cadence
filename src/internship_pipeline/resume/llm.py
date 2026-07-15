@@ -79,11 +79,61 @@ def resume_system_blocks(
     ]
 
 
+def _salvage_truncated_object(text: str) -> Optional[dict]:
+    """Recover a JSON object from a response cut off mid-generation (max_tokens).
+
+    Scans from the first ``{`` tracking string/escape state and the open-bracket
+    stack; every ``}`` that completes a nested object is a candidate cut point.
+    Trying cut points last-to-first, drop whatever partial element follows the cut
+    and append the closers the stack still owes. The result keeps every COMPLETE
+    element and loses only the truncated tail — for tailoring that means a few
+    fewer selected bullets, not a dead stage.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    span = text[start:]
+    stack: list[str] = []  # closers still owed, innermost last
+    cuts: list[tuple[int, str]] = []  # (index of a nested '}', closers owed there)
+    in_str = False
+    escaped = False
+    for i, ch in enumerate(span):
+        if escaped:
+            escaped = False
+            continue
+        if in_str:
+            if ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]":
+            if not stack or stack[-1] != ch:
+                return None  # malformed beyond salvage, not merely truncated
+            stack.pop()
+            if ch == "}" and stack:
+                cuts.append((i, "".join(reversed(stack))))
+    for i, closers in reversed(cuts):
+        try:
+            obj = json.loads(span[: i + 1] + closers)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            return obj
+    return None
+
+
 def parse_json_object(text: str) -> dict:
     """Best-effort parse of a JSON object from an LLM text response.
 
     Tolerates ``` fences and surrounding prose by extracting the first balanced
-    ``{...}`` span. Raises ``ValueError`` if nothing parseable is found.
+    ``{...}`` span, and salvages the complete leading elements of a response
+    truncated at ``max_tokens``. Raises ``ValueError`` if nothing parseable is
+    found.
     """
     candidates = [text.strip()]
     fenced = _FENCE_RE.search(text)
@@ -100,7 +150,16 @@ def parse_json_object(text: str) -> dict:
             continue
         if isinstance(obj, dict):
             return obj
-    raise ValueError("no JSON object found in model response")
+    salvaged = _salvage_truncated_object(text)
+    if salvaged is not None:
+        log.warning(
+            "model response was not valid JSON; salvaged its complete leading elements",
+            extra={"response_chars": len(text)},
+        )
+        return salvaged
+    raise ValueError(
+        f"no JSON object found in model response (tail: {text.strip()[-120:]!r})"
+    )
 
 
 def _extract_text(response: object) -> str:
@@ -137,6 +196,17 @@ def build_default_complete(settings: Settings) -> Optional[CompleteFn]:
     # grounding guardrail, not the sampling knob.
     send_temperature = True
 
+    def _parse(response: object) -> dict:
+        if getattr(response, "stop_reason", None) == "max_tokens":
+            # parse_json_object salvages what it can; raise ANTHROPIC_MAX_TOKENS
+            # if this keeps appearing.
+            log.warning(
+                "model response truncated at max_tokens",
+                extra={"model": settings.anthropic_model,
+                       "max_tokens": settings.anthropic_max_tokens},
+            )
+        return parse_json_object(_extract_text(response))
+
     def complete(system_blocks: list[dict], user_text: str) -> dict:
         nonlocal send_temperature
         kwargs: dict = {
@@ -148,7 +218,7 @@ def build_default_complete(settings: Settings) -> Optional[CompleteFn]:
         if send_temperature:
             try:
                 response = client.messages.create(temperature=0, **kwargs)
-                return parse_json_object(_extract_text(response))
+                return _parse(response)
             except anthropic.BadRequestError as exc:
                 if "temperature" not in str(exc).lower():
                     raise
@@ -158,6 +228,6 @@ def build_default_complete(settings: Settings) -> Optional[CompleteFn]:
                     extra={"model": settings.anthropic_model},
                 )
         response = client.messages.create(**kwargs)
-        return parse_json_object(_extract_text(response))
+        return _parse(response)
 
     return complete

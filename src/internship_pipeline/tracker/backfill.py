@@ -69,7 +69,7 @@ def backfill_application(app: Application, *, settings, storage: Storage, drive)
     return True
 
 
-def sync_sheet(apps: list[Application], *, settings, services) -> tuple[int, int]:
+def sync_sheet(apps: list[Application], *, settings, services, storage: Storage) -> tuple[int, int]:
     """Project ``apps`` into the tracker sheet (same upsert rules as the daily stage).
 
     Review gating: only applications that already HAVE a sheet row (they predate
@@ -86,7 +86,7 @@ def sync_sheet(apps: list[Application], *, settings, services) -> tuple[int, int
     }
     eligible = [a for a in apps if a.status == "reviewed" or a.dedupe_key in in_sheet]
 
-    outcome = sync_applications_to_sheet(services, spreadsheet_id, eligible)
+    outcome = sync_applications_to_sheet(services, spreadsheet_id, eligible, storage=storage)
     return outcome.rows_appended, outcome.cells_filled
 
 
@@ -125,7 +125,7 @@ def main() -> int:
         for app in todo:
             if backfill_application(app, settings=settings, storage=storage, drive=services.drive):
                 recovered += 1
-        appended, filled = sync_sheet(apps, settings=settings, services=services)
+        appended, filled = sync_sheet(apps, settings=settings, services=services, storage=storage)
         print(
             f"Recovered {recovered}/{len(todo)} CVs to Drive; sheet: "
             f"{appended} rows appended, {filled} cells filled."

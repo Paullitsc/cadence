@@ -1,9 +1,10 @@
 """Thin Google Sheets API wrappers for the tracker (all planning stays in rows.py).
 
-Three operations: make sure the two tabs exist (with their one-time cosmetic setup —
+Four operations: make sure the two tabs exist (with their one-time cosmetic setup —
 status dropdown, conditional formatting, hidden dedupe-key column, frozen header),
-read a tab snapshot, and apply a ``SheetPlan``. Formulas are written with
-``valueInputOption=USER_ENTERED`` so ``=HYPERLINK(...)`` cells render as links.
+read a tab snapshot, apply a ``SheetPlan``, and delete rows (human-rejected ones).
+Formulas are written with ``valueInputOption=USER_ENTERED`` so ``=HYPERLINK(...)``
+cells render as links.
 """
 
 from __future__ import annotations
@@ -187,6 +188,29 @@ def read_rows(sheets: Any, spreadsheet_id: str, tab: str) -> list[list[str]]:
         .execute()
     )
     return [[str(c) for c in row] for row in resp.get("values", [])]
+
+
+def delete_rows(sheets: Any, spreadsheet_id: str, sheet_id: int, row_numbers: list[int]) -> None:
+    """Delete the given 1-based sheet rows (one batchUpdate; descending order so
+    each deletion leaves the remaining indices valid)."""
+    if not row_numbers:
+        return
+    requests = [
+        {
+            "deleteDimension": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "startIndex": row - 1,  # deleteDimension ranges are 0-based
+                    "endIndex": row,
+                }
+            }
+        }
+        for row in sorted(row_numbers, reverse=True)
+    ]
+    sheets.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id, body={"requests": requests}
+    ).execute()
 
 
 def apply_plan(sheets: Any, spreadsheet_id: str, tab: str, plan: SheetPlan) -> None:

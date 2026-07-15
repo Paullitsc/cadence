@@ -18,6 +18,7 @@ from internship_pipeline.tracker.rows import (
     HEADERS,
     plan_answers_upsert,
     plan_applications_upsert,
+    plan_rejected_removals,
     spreadsheet_url,
 )
 
@@ -175,3 +176,36 @@ def test_title_quotes_are_escaped_in_formula():
 
 def test_spreadsheet_url():
     assert spreadsheet_url("SID") == "https://docs.google.com/spreadsheets/d/SID"
+
+
+def _sheet_row(key: str, status: str) -> list[str]:
+    row = [""] * len(HEADERS)
+    row[COL_STATUS] = status
+    row[COL_KEY] = key
+    return row
+
+
+def test_rejected_rows_are_planned_for_removal():
+    existing = [
+        HEADERS,
+        _sheet_row("k1", "prepared"),
+        _sheet_row("k2", "rejected"),
+        _sheet_row("k3", "REJECTED"),  # case-insensitive: typed over the dropdown
+        _sheet_row("k4", "interviewing"),
+        _sheet_row("k5", "rejected"),
+    ]
+    row_numbers, keys = plan_rejected_removals(existing)
+    assert row_numbers == [3, 4, 6]  # 1-based sheet rows (row 1 is the header)
+    assert keys == ["k2", "k3", "k5"]
+
+
+def test_rejected_row_without_dedupe_key_is_left_alone():
+    hand_added = [""] * len(HEADERS)
+    hand_added[COL_STATUS] = "rejected"  # human's own row — not ours to delete
+    row_numbers, keys = plan_rejected_removals([HEADERS, hand_added])
+    assert row_numbers == [] and keys == []
+
+
+def test_no_rejections_is_a_no_op():
+    existing = [HEADERS, _sheet_row("k1", "prepared"), _sheet_row("k2", "offer")]
+    assert plan_rejected_removals(existing) == ([], [])

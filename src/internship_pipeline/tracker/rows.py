@@ -11,6 +11,10 @@ human** — and for every other (pipeline-owned) cell the safe rule is: after th
 initial row insert, only fill cells that are still blank. The CV cell is the one
 exception: it always reflects the latest render, so re-reviewing an application
 (e.g. after a renderer change) overwrites a stale Drive link instead of leaving it.
+
+One Status value acts back on the sheet: a row the human sets to ``rejected`` is
+DELETED on the next sync (``plan_rejected_removals``), after the stored
+application is marked rejected so no later sync resurrects it.
 """
 
 from __future__ import annotations
@@ -37,6 +41,9 @@ COL_TITLE, COL_DATE, COL_COMPANY, COL_LOCATIONS, COL_STATUS, COL_NOTES, COL_CV, 
     COL_ANSWERS, COL_FIT, COL_KEYWORDS, COL_KEY = range(len(HEADERS))
 
 # The status workflow is the human's; the pipeline only ever writes the first value.
+# "rejected" is special: the next sync REMOVES that row from the sheet (and marks
+# the stored application rejected so it never comes back) — it's how the human
+# discards a role from the tracker. The full history stays in storage.
 STATUS_OPTIONS: list[str] = [
     "prepared",
     "submitted",
@@ -45,6 +52,9 @@ STATUS_OPTIONS: list[str] = [
     "rejected",
     "withdrawn",
 ]
+
+# The human-set Status value that removes a row from the sheet on the next sync.
+REJECTED_STATUS = "rejected"
 
 # Columns the pipeline may fill on an EXISTING row — only when the cell is blank.
 # Status is included (blank = a row that predates the dropdown); Notes never is.
@@ -149,6 +159,23 @@ def _build_row(
     row[COL_KEYWORDS] = ", ".join(app.keywords[:10])
     row[COL_KEY] = app.dedupe_key
     return row
+
+
+def plan_rejected_removals(existing: list[list[str]]) -> tuple[list[int], list[str]]:
+    """Rows whose Status the human set to ``rejected`` — to delete from the sheet.
+
+    Returns (1-based sheet row numbers, their dedupe keys), sheet order. Rows
+    without a dedupe key are left alone (a hand-added row is the human's, and
+    without the key the removal couldn't be recorded in storage anyway).
+    """
+    row_numbers: list[int] = []
+    keys: list[str] = []
+    for idx, row in enumerate(existing[1:], start=2):  # sheet rows start at 1; skip header
+        key = _cell(row, COL_KEY)
+        if key and _cell(row, COL_STATUS).lower() == REJECTED_STATUS:
+            row_numbers.append(idx)
+            keys.append(key)
+    return row_numbers, keys
 
 
 def plan_applications_upsert(

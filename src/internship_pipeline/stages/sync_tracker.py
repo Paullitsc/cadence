@@ -13,6 +13,10 @@ human owns: Notes is never written after the initial insert, Status is written o
 as "prepared", and every other pipeline-owned cell is only filled while blank —
 except the CV cell, which always tracks the latest Drive link.
 
+The one Status value the pipeline acts on is "rejected": the human picking it in
+the dropdown makes this sync mark the stored application rejected and DELETE the
+row from the sheet (storage keeps the history; the sheet stays a clean worklist).
+
 Zero-credential behavior: with the tracker unconfigured this logs one line and
 no-ops (the pipeline must run end-to-end with zero credentials).
 """
@@ -22,7 +26,6 @@ from __future__ import annotations
 from ..logging_config import get_logger
 from ..models import Application, StageContext, StageResult
 from ..tracker import build_tracker_services
-from ..tracker.sheets import ensure_tracker_tabs
 from ..tracker.sync import sync_applications_to_sheet
 
 NAME = "sync_tracker"
@@ -82,24 +85,20 @@ def run(ctx: StageContext) -> StageResult:
 
     apps, locations_by_key, cv_links_by_key = _collect_applications(ctx)
     if not apps:
-        # Still worth the round trip: keeps tab cosmetics — chiefly the Status
-        # dropdown — self-healing daily instead of only on the next review submit
-        # (sync_applications_to_sheet, which normally does this, is never reached
-        # below when there's nothing to sync).
-        ensure_tracker_tabs(services.sheets, spreadsheet_id)
+        # Still sync with an empty batch: it keeps tab cosmetics (chiefly the
+        # Status dropdown) self-healing daily, and — more importantly — it
+        # processes any rows the human set to "rejected" since the last run.
         log.info(
             "no reviewed applications to sync (review pending ones via "
             "`python -m internship_pipeline.review`)",
             extra={"run_id": ctx.run_id},
-        )
-        return StageResult(
-            name=NAME, counts={"tracker_rows_appended": 0, "tracker_cells_filled": 0}
         )
 
     outcome = sync_applications_to_sheet(
         services,
         spreadsheet_id,
         apps,
+        storage=ctx.get_storage(),
         locations_by_key=locations_by_key,
         cv_links_by_key=cv_links_by_key,
     )
@@ -108,6 +107,7 @@ def run(ctx: StageContext) -> StageResult:
         "tracker_rows_appended": outcome.rows_appended,
         "tracker_cells_filled": outcome.cells_filled,
         "tracker_answer_rows_appended": outcome.answer_rows_appended,
+        "tracker_rows_removed": outcome.rows_removed,
     }
     log.info("stage done", extra={"run_id": ctx.run_id, "stage": NAME, **counts})
     return StageResult(name=NAME, counts=counts, notes=f"synced={len(apps)}")

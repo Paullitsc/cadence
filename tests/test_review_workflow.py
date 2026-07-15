@@ -96,11 +96,15 @@ class _Exec:
 
 
 class FakeSheets:
-    """Just enough of the Sheets discovery client for ensure_tracker_tabs."""
+    """Just enough of the Sheets discovery client for ensure_tracker_tabs and the
+    shared sync: per-tab values, and deleteDimension requests actually remove rows
+    so a post-deletion re-read sees the shifted sheet (like the real API)."""
 
-    def __init__(self, tabs: dict[str, int]):
+    def __init__(self, tabs: dict[str, int], values_by_tab: dict[str, list[list[str]]] | None = None):
         self.tabs = tabs
+        self.values_by_tab = values_by_tab or {}
         self.batch_bodies: list[dict] = []
+        self.appended: list[dict] = []
 
     def spreadsheets(self):
         return self
@@ -108,21 +112,30 @@ class FakeSheets:
     def values(self):
         return self
 
+    def _tab_for_range(self, range):  # noqa: A002 (API name)
+        return (range or "").split("!")[0].strip("'")
+
     def get(self, spreadsheetId, fields=None, range=None):  # noqa: A002 (API name)
         return _Exec({
             "sheets": [{"properties": {"title": t, "sheetId": i}}
                        for t, i in self.tabs.items()],
-            "values": [],
+            "values": self.values_by_tab.get(self._tab_for_range(range), []),
         })
 
     def batchUpdate(self, spreadsheetId, body):  # noqa: N802 (API name)
         self.batch_bodies.append(body)
+        for req in body.get("requests", []):
+            rng = req.get("deleteDimension", {}).get("range")
+            if rng and rng.get("dimension") == "ROWS":
+                tab = next(t for t, i in self.tabs.items() if i == rng["sheetId"])
+                del self.values_by_tab[tab][rng["startIndex"] : rng["endIndex"]]
         return _Exec({"replies": [{"addSheet": {"properties": {"sheetId": 99}}}]})
 
     def update(self, **kwargs):
         return _Exec({})
 
     def append(self, **kwargs):
+        self.appended.append(kwargs)
         return _Exec({})
 
 
@@ -150,3 +163,82 @@ def test_fresh_tabs_created_with_dropdown_once():
         if "setDataValidation" in req
     ]
     assert len(validations) == 1  # creation setup includes it; no double-apply
+
+
+# --- human rejection via the Status dropdown -----------------------------------------
+def test_rejected_status_removes_row_and_marks_storage(tmp_path):
+    from internship_pipeline.tracker.auth import TrackerServices
+    from internship_pipeline.tracker.rows import ANSWERS_HEADERS, COL_KEY, COL_STATUS, HEADERS
+    from internship_pipeline.tracker.sync import sync_applications_to_sheet
+
+    store = SQLiteStore(str(tmp_path / "t.db"))
+    rejected = Application(
+        dedupe_key="rej1", company_name="Acme", title="Intern", url="https://a/rej",
+        status="reviewed", reviewed_at="2026-07-13T00:00:00+00:00",
+    )
+    fresh = Application(
+        dedupe_key="new1", company_name="Beta", title="Intern", url="https://a/new",
+        status="reviewed", reviewed_at="2026-07-13T00:00:00+00:00",
+    )
+    store.save_application(rejected)
+    store.save_application(fresh)
+
+    rejected_row = [""] * len(HEADERS)
+    rejected_row[COL_STATUS] = "rejected"  # the human picked it in the dropdown
+    rejected_row[COL_KEY] = "rej1"
+    fake = FakeSheets(
+        {APPLICATIONS_TAB: 7, ANSWERS_TAB: 8},
+        values_by_tab={
+            APPLICATIONS_TAB: [list(HEADERS), rejected_row],
+            ANSWERS_TAB: [list(ANSWERS_HEADERS)],
+        },
+    )
+
+    outcome = sync_applications_to_sheet(
+        TrackerServices(sheets=fake, drive=None), "sheet-id", [rejected, fresh],
+        storage=store,
+    )
+
+    # The row is gone from the sheet and the rejection is recorded in storage.
+    assert outcome.rows_removed == 1
+    assert fake.values_by_tab[APPLICATIONS_TAB] == [list(HEADERS)]
+    assert store.get_application("rej1").status == "rejected"
+    # The rejected application was dropped from the upsert; only the fresh one
+    # was appended — nothing resurrects the deleted row.
+    assert outcome.rows_appended == 1
+    (appended,) = fake.appended
+    assert 'https://a/new' in str(appended["body"]["values"])
+    assert 'rej1' not in str(appended["body"]["values"])
+    store.close()
+
+
+def test_sync_with_empty_batch_still_processes_rejections(tmp_path):
+    """The daily reconcile must honor rejections even when nothing new is reviewed."""
+    from internship_pipeline.tracker.auth import TrackerServices
+    from internship_pipeline.tracker.rows import ANSWERS_HEADERS, COL_KEY, COL_STATUS, HEADERS
+    from internship_pipeline.tracker.sync import sync_applications_to_sheet
+
+    store = SQLiteStore(str(tmp_path / "t.db"))
+    store.save_application(Application(
+        dedupe_key="rej1", company_name="Acme", title="Intern", url="https://a/rej",
+        status="reviewed",
+    ))
+
+    rejected_row = [""] * len(HEADERS)
+    rejected_row[COL_STATUS] = "rejected"
+    rejected_row[COL_KEY] = "rej1"
+    fake = FakeSheets(
+        {APPLICATIONS_TAB: 7, ANSWERS_TAB: 8},
+        values_by_tab={
+            APPLICATIONS_TAB: [list(HEADERS), rejected_row],
+            ANSWERS_TAB: [list(ANSWERS_HEADERS)],
+        },
+    )
+
+    outcome = sync_applications_to_sheet(
+        TrackerServices(sheets=fake, drive=None), "sheet-id", [], storage=store,
+    )
+    assert outcome.rows_removed == 1
+    assert outcome.rows_appended == 0
+    assert store.get_application("rej1").status == "rejected"
+    store.close()

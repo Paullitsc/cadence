@@ -106,6 +106,22 @@ def test_tailoring_never_introduces_ungrounded_tokens():
     assert result.human_review is True
 
 
+def test_tailoring_falls_back_verbatim_when_llm_call_raises():
+    """A failed LLM call (truncated JSON, API error) degrades to select-only for
+    that one CV instead of propagating and killing the whole stage."""
+    resume, bullets, keywords = _setup()
+
+    def boom(system_blocks, user_text):
+        raise ValueError("no JSON object found in model response")
+
+    result = tailor_resume(
+        jd_text=JD, keywords=keywords, candidate_bullets=bullets,
+        resume=resume, complete=boom, max_bullets=10,
+    )
+    assert result.used_llm is False
+    assert [tb.text.replace("**", "") for tb in result.bullets] == [b.text for b in bullets]
+
+
 def test_tailoring_drops_unknown_ids_from_llm():
     resume, bullets, keywords = _setup()
 
