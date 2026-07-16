@@ -32,6 +32,7 @@ class Education(BaseModel):
 
 class Experience(BaseModel):
     company: str
+    url: Optional[str] = None  # live site / company page → blue clickable title
     role: str
     location: Optional[str] = None
     start_date: Optional[str] = None

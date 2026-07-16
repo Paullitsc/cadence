@@ -46,6 +46,8 @@ education:
 # --- Experiences: each bullet is text + tags + metrics ---
 experiences:
   - company: Placeholder Labs
+    # optional `url:` makes the company name a blue clickable title (same as projects).
+    # url: https://example.com
     role: Software Engineer Intern
     location: Remote
     start_date: "2025-05"

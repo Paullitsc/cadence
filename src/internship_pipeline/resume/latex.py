@@ -256,10 +256,13 @@ def _header(cv: dict, *, show_repolink_note: bool) -> str:
     return "\n".join(lines)
 
 
-def _experience_section(entries: list[dict]) -> str:
+def _experience_section(entries: list[dict]) -> tuple[str, bool]:
+    any_link = False
     blocks: list[str] = []
     for entry in entries:
-        head = r"    \textbf{" + md_to_latex(entry.get("company", "")) + "}"
+        company_latex, is_link = _linked_name(entry.get("company", ""))
+        any_link = any_link or is_link
+        head = "    " + company_latex
         if entry.get("location"):
             head += r" \hfill \textbf{" + latex_escape(entry["location"]) + "}"
         head += " \\\\\n"
@@ -270,7 +273,7 @@ def _experience_section(entries: list[dict]) -> str:
         head += "\\par\n    \\vspace{-1pt}\n"
         blocks.append(head + _bullets_block(entry.get("highlights", [])))
     body = "\n\n    \\jobspace\n".join(blocks)
-    return "\\section*{PROFESSIONAL EXPERIENCE}\n    \\noindent\n" + body
+    return "\\section*{PROFESSIONAL EXPERIENCE}\n    \\noindent\n" + body, any_link
 
 
 def _education_section(entries: list[dict]) -> str:
@@ -321,13 +324,17 @@ def build_latex(cv_doc: dict) -> str:
     cv = cv_doc.get("cv", {})
     sections = cv.get("sections", {})
 
-    projects_tex, any_repolink = ("", False)
-    if sections.get("projects"):
-        projects_tex, any_repolink = _projects_section(sections["projects"])
-
-    parts = [_PREAMBLE, _header(cv, show_repolink_note=any_repolink)]
+    experience_tex, any_exp_link = ("", False)
     if sections.get("experience"):
-        parts.append(_experience_section(sections["experience"]))
+        experience_tex, any_exp_link = _experience_section(sections["experience"])
+
+    projects_tex, any_proj_link = ("", False)
+    if sections.get("projects"):
+        projects_tex, any_proj_link = _projects_section(sections["projects"])
+
+    parts = [_PREAMBLE, _header(cv, show_repolink_note=any_exp_link or any_proj_link)]
+    if experience_tex:
+        parts.append(experience_tex)
     if sections.get("education"):
         parts.append(_education_section(sections["education"]))
     if sections.get("skills"):

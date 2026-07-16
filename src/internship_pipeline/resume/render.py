@@ -103,11 +103,13 @@ def build_cv_doc(
         highlights = exp_bullets.get(ei)
         if not highlights:  # only include experiences that contributed a tailored bullet
             continue
+        # A linked experience company renders as the template's blue \repolink.
+        company = f"[{exp.company}]({exp.url})" if exp.url else exp.company
         experience_entries.append(
             {
                 k: v
                 for k, v in {
-                    "company": exp.company,
+                    "company": company,
                     "position": exp.role,
                     "location": exp.location,
                     "start_date": exp.start_date,

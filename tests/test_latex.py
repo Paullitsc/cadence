@@ -89,10 +89,20 @@ def test_build_latex_replicates_resume_tex_structure():
     assert tex.strip().endswith(r"\end{document}")
 
 
+def test_build_latex_experience_url_renders_as_repolink():
+    resume = load_master_resume(FIXTURE)
+    resume.experiences[0].url = "https://invest-iq.app"
+    tex = build_latex(build_cv_doc(resume, _tailored(resume)))
+    assert r"\repolink{https://invest-iq.app}{Acme Labs}" in tex
+    assert "Blue titles link to source repositories" in tex
+
+
 def test_build_latex_without_project_links_omits_note_line():
     resume = load_master_resume(FIXTURE)
     for proj in resume.projects:
         proj.url = None
+    for exp in resume.experiences:
+        exp.url = None
     tex = build_latex(build_cv_doc(resume, _tailored(resume)))
     assert "Blue titles link" not in tex
     assert r"\repolink" not in tex.split(r"\begin{document}")[1]
