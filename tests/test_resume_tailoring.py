@@ -69,6 +69,18 @@ def test_bold_keywords_handles_tech_punctuation():
     assert bold_keywords("No match here", []) == "No match here"
 
 
+def test_emphasize_restores_master_bold_dropped_by_rephrase():
+    """LLM rephrases that keep the words but drop ``**`` get master emphasis back."""
+    from internship_pipeline.resume.tailoring import emphasize
+
+    master = "Developed **5+ GraphQL APIs** using **SQL** and **RESTful API** design."
+    rephrased = "Developed 5+ GraphQL APIs using SQL and RESTful API design."
+    out = emphasize(rephrased, master_text=master, keywords=["graphql"])
+    assert "**5+ GraphQL APIs**" in out
+    assert "**SQL**" in out
+    assert "**RESTful API**" in out
+
+
 def test_tailoring_never_introduces_ungrounded_tokens():
     """Anti-hallucination regression: fabricated LLM output must not reach the résumé."""
     resume, bullets, keywords = _setup()

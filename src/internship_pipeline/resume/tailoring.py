@@ -13,9 +13,10 @@ the top-K bullets are kept verbatim in fit order. Same guardrail, same output sh
 
 Keyword bolding: JD keywords found in a bullet are wrapped in Markdown ``**bold**``
 (rendered bold in the PDF). The LLM is instructed to do it (and to preserve any
-bold already written in ``master_resume.yaml``), and ``bold_keywords`` runs as a
-deterministic post-pass in both paths so the emphasis is guaranteed either way —
-it only ever adds asterisks, never words, so grounding is unaffected.
+bold already written in ``master_resume.yaml``), and ``emphasize`` runs as a
+deterministic post-pass in both paths: it restores master-résumé bold phrases
+the LLM may have dropped, then layers on JD-keyword bolding. It only ever adds
+asterisks, never words, so grounding is unaffected.
 """
 
 from __future__ import annotations
@@ -94,10 +95,29 @@ _MD_LINK_RE = re.compile(r"\[[^\]]+\]\(([^)\s]+)\)")
 # Spans keyword-bolding must not touch: existing **bold** and [text](url) links.
 _PROTECTED_SPAN_RE = re.compile(r"\*\*.+?\*\*|\[[^\]]*\]\([^)\s]*\)")
 
+# Phrases already marked ``**bold**`` in master-résumé (or tailored) text.
+_BOLD_PHRASE_RE = re.compile(r"\*\*(.+?)\*\*")
+
 
 def markdown_link_urls(text: str) -> set[str]:
     """The set of URLs carried by Markdown links in ``text``."""
     return set(_MD_LINK_RE.findall(text or ""))
+
+
+def bold_phrases(text: str) -> list[str]:
+    """Inner text of every ``**bold**`` span in ``text`` (longest-first callers sort)."""
+    return [m.group(1) for m in _BOLD_PHRASE_RE.finditer(text or "")]
+
+
+def emphasize(text: str, *, master_text: str = "", keywords: list[str] | None = None) -> str:
+    """Restore master-résumé bold spans, then wrap JD keyword hits.
+
+    LLM rephrases often drop the intentional ``**tech**`` / metrics bolding from
+    ``master_resume.yaml``; re-applying those phrases (when the words still appear)
+    keeps Resume.tex-style emphasis without inventing words. JD keywords are then
+    layered on via ``bold_keywords``.
+    """
+    return bold_keywords(text, [*bold_phrases(master_text), *(keywords or [])])
 
 
 def bold_keywords(text: str, keywords: list[str]) -> str:
@@ -232,8 +252,11 @@ def tailor_resume(
     vocab = _input_vocab(jd_text, keywords, candidate_bullets)
 
     def _verbatim(refs: list[BulletRef]) -> list[TailoredBullet]:
-        # Words verbatim; keyword bolding is a presentation-only post-pass.
-        return [TailoredBullet(ref=r, text=bold_keywords(r.text, keywords)) for r in refs]
+        # Words verbatim; emphasis is a presentation-only post-pass.
+        return [
+            TailoredBullet(ref=r, text=emphasize(r.text, master_text=r.text, keywords=keywords))
+            for r in refs
+        ]
 
     if complete is None:
         # Deterministic select-only: keep the (already fit-ordered) bullets verbatim.
@@ -278,7 +301,11 @@ def tailor_resume(
             continue
         seen.add(rid)
         text = enforce_grounding(str(item.get("text", ref.text)), ref.text, vocab)
-        out.append(TailoredBullet(ref=ref, text=bold_keywords(text, keywords)))
+        out.append(
+            TailoredBullet(
+                ref=ref, text=emphasize(text, master_text=ref.text, keywords=keywords)
+            )
+        )
         if len(out) >= max_bullets:
             break
 

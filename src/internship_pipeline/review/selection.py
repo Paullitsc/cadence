@@ -16,7 +16,7 @@ import yaml
 from ..models import Application
 from ..resume.loader import all_bullets
 from ..resume.models import BulletRef, MasterResume
-from ..resume.tailoring import TailoredBullet, bold_keywords
+from ..resume.tailoring import TailoredBullet, emphasize
 
 
 def _normalize(text: str) -> str:
@@ -116,10 +116,10 @@ def selection_to_bullets(
 ) -> list[TailoredBullet]:
     """The human's checked ids → priority-ordered ``TailoredBullet`` list.
 
-    Recommended bullets keep their tailored text and recommendation order (they
-    are what the render trims LAST); bullets the human added beyond the
-    recommendation follow in master order, verbatim except for the deterministic
-    JD-keyword bolding (which only ever adds emphasis, never words).
+    Recommended bullets keep their tailored wording and recommendation order (they
+    are what the render trims LAST), with master-résumé bold spans restored and
+    JD-keyword bolding applied; bullets the human added beyond the recommendation
+    follow in master order with the same emphasis post-pass.
     """
     refs = {ref.id: ref for ref in all_bullets(resume)}
     rec = _recommendation_map(app, list(refs.values()))
@@ -131,9 +131,17 @@ def selection_to_bullets(
     out: list[TailoredBullet] = []
     for rid in recommended:
         text = rec[rid][1] or refs[rid].text
-        out.append(TailoredBullet(ref=refs[rid], text=text))
+        out.append(
+            TailoredBullet(
+                ref=refs[rid],
+                text=emphasize(text, master_text=refs[rid].text, keywords=app.keywords),
+            )
+        )
     for rid in added:
         out.append(
-            TailoredBullet(ref=refs[rid], text=bold_keywords(refs[rid].text, app.keywords))
+            TailoredBullet(
+                ref=refs[rid],
+                text=emphasize(refs[rid].text, master_text=refs[rid].text, keywords=app.keywords),
+            )
         )
     return out
