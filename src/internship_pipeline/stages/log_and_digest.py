@@ -25,6 +25,7 @@ from ..models import (
     DATA_LLM_CALLS_SAVED,
     DATA_NEW_JOBS,
     DATA_PREPARED,
+    DATA_TRACKER_ROWS_REMOVED,
     Job,
     Outreach,
     StageContext,
@@ -120,6 +121,8 @@ def run(ctx: StageContext) -> StageResult:
         "applications_expired": expired_count,
         "llm_calls_saved": ctx.data.get(DATA_LLM_CALLS_SAVED, 0),
         "outreach_pending": len(pending_outreach),
+        # Rows the human set to rejected/withdrawn, deleted by this run's sync.
+        "tracker_rows_removed": ctx.data.get(DATA_TRACKER_ROWS_REMOVED, 0),
         "replies_found": len(replies),
         "replied_matched": len(replied_rows),
         "networking_actions": len(networking_actions),

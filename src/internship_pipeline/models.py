@@ -137,9 +137,10 @@ class Application(BaseModel):
     reviewed_at: Optional[str] = None  # ISO timestamp of the human's review submit
     human_review: bool = False  # high-priority role → flagged for a closer human look
     # pending_review -> reviewed (human finalized the CV in the review app; only
-    # then does the row reach the tracker sheet) | expired | rejected (human set
-    # the sheet row's Status dropdown to "rejected" — the sync removed the row,
-    # and this status keeps it from ever coming back). Never auto-submitted.
+    # then does the row reach the tracker sheet) | expired | rejected/withdrawn
+    # (human set the sheet row's Status dropdown — the sync removed the row and
+    # recorded that status, which keeps it from ever coming back). Never
+    # auto-submitted.
     status: str = "pending_review"
 
 
@@ -258,6 +259,7 @@ DATA_PREPARED = "prepared"  # match_and_slice -> draft_outreach, prepare_applica
 DATA_RESUME = "resume"  # match_and_slice -> draft_outreach, prepare_applications (skip a reload)
 DATA_LLM_CALLS_SAVED = "llm_calls_saved"  # match_and_slice -> log_and_digest
 DATA_OUTREACH = "outreach"  # draft_outreach (currently unread downstream; kept for parity)
+DATA_TRACKER_ROWS_REMOVED = "tracker_rows_removed"  # sync_tracker -> log_and_digest
 
 
 @dataclasses.dataclass

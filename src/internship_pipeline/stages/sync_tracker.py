@@ -13,9 +13,10 @@ human owns: Notes is never written after the initial insert, Status is written o
 as "prepared", and every other pipeline-owned cell is only filled while blank —
 except the CV cell, which always tracks the latest Drive link.
 
-The one Status value the pipeline acts on is "rejected": the human picking it in
-the dropdown makes this sync mark the stored application rejected and DELETE the
-row from the sheet (storage keeps the history; the sheet stays a clean worklist).
+Two Status values the pipeline acts on: "rejected" and "withdrawn". The human
+picking either in the dropdown makes this sync mark the stored application with
+that status and DELETE the row from the sheet (storage keeps the history; the
+sheet stays a clean worklist). The removals are reported in that day's digest.
 
 Zero-credential behavior: with the tracker unconfigured this logs one line and
 no-ops (the pipeline must run end-to-end with zero credentials).
@@ -24,7 +25,7 @@ no-ops (the pipeline must run end-to-end with zero credentials).
 from __future__ import annotations
 
 from ..logging_config import get_logger
-from ..models import Application, StageContext, StageResult
+from ..models import DATA_TRACKER_ROWS_REMOVED, Application, StageContext, StageResult
 from ..tracker import build_tracker_services
 from ..tracker.sync import sync_applications_to_sheet
 
@@ -87,7 +88,8 @@ def run(ctx: StageContext) -> StageResult:
     if not apps:
         # Still sync with an empty batch: it keeps tab cosmetics (chiefly the
         # Status dropdown) self-healing daily, and — more importantly — it
-        # processes any rows the human set to "rejected" since the last run.
+        # processes any rows the human set to "rejected"/"withdrawn" since the
+        # last run.
         log.info(
             "no reviewed applications to sync (review pending ones via "
             "`python -m internship_pipeline.review`)",
@@ -109,6 +111,7 @@ def run(ctx: StageContext) -> StageResult:
         "tracker_answer_rows_appended": outcome.answer_rows_appended,
         "tracker_rows_removed": outcome.rows_removed,
     }
+    ctx.data[DATA_TRACKER_ROWS_REMOVED] = outcome.rows_removed
     log.info("stage done", extra={"run_id": ctx.run_id, "stage": NAME, **counts})
     return StageResult(name=NAME, counts=counts, notes=f"synced={len(apps)}")
 

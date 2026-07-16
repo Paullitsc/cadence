@@ -46,6 +46,10 @@
     for your CV review — run <code>make review</code> to pick the bullets, check the one-page
     fit, and push them to the sheet.</p>
   {% endif %}
+  {% if counts.get('tracker_rows_removed', 0) %}
+  <p class="hint"><b>{{ counts.get('tracker_rows_removed', 0) }}</b> tracker row(s) you marked
+    rejected/withdrawn were removed from the sheet (the history stays in storage).</p>
+  {% endif %}
   {% if sheet_url %}
   <a class="tracker" href="{{ sheet_url }}">Open the application tracker (Google Sheet) →</a>
   <p class="hint">Every application you reviewed is a row there: job link, tailored CV (Drive),

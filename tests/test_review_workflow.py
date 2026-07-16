@@ -165,8 +165,8 @@ def test_fresh_tabs_created_with_dropdown_once():
     assert len(validations) == 1  # creation setup includes it; no double-apply
 
 
-# --- human rejection via the Status dropdown -----------------------------------------
-def test_rejected_status_removes_row_and_marks_storage(tmp_path):
+# --- human rejection/withdrawal via the Status dropdown ------------------------------
+def test_rejected_and_withdrawn_statuses_remove_rows_and_mark_storage(tmp_path):
     from internship_pipeline.tracker.auth import TrackerServices
     from internship_pipeline.tracker.rows import ANSWERS_HEADERS, COL_KEY, COL_STATUS, HEADERS
     from internship_pipeline.tracker.sync import sync_applications_to_sheet
@@ -176,39 +176,49 @@ def test_rejected_status_removes_row_and_marks_storage(tmp_path):
         dedupe_key="rej1", company_name="Acme", title="Intern", url="https://a/rej",
         status="reviewed", reviewed_at="2026-07-13T00:00:00+00:00",
     )
+    withdrawn = Application(
+        dedupe_key="wit1", company_name="Gamma", title="Intern", url="https://a/wit",
+        status="reviewed", reviewed_at="2026-07-13T00:00:00+00:00",
+    )
     fresh = Application(
         dedupe_key="new1", company_name="Beta", title="Intern", url="https://a/new",
         status="reviewed", reviewed_at="2026-07-13T00:00:00+00:00",
     )
     store.save_application(rejected)
+    store.save_application(withdrawn)
     store.save_application(fresh)
 
     rejected_row = [""] * len(HEADERS)
     rejected_row[COL_STATUS] = "rejected"  # the human picked it in the dropdown
     rejected_row[COL_KEY] = "rej1"
+    withdrawn_row = [""] * len(HEADERS)
+    withdrawn_row[COL_STATUS] = "withdrawn"  # the human pulled out of this one
+    withdrawn_row[COL_KEY] = "wit1"
     fake = FakeSheets(
         {APPLICATIONS_TAB: 7, ANSWERS_TAB: 8},
         values_by_tab={
-            APPLICATIONS_TAB: [list(HEADERS), rejected_row],
+            APPLICATIONS_TAB: [list(HEADERS), rejected_row, withdrawn_row],
             ANSWERS_TAB: [list(ANSWERS_HEADERS)],
         },
     )
 
     outcome = sync_applications_to_sheet(
-        TrackerServices(sheets=fake, drive=None), "sheet-id", [rejected, fresh],
-        storage=store,
+        TrackerServices(sheets=fake, drive=None), "sheet-id",
+        [rejected, withdrawn, fresh], storage=store,
     )
 
-    # The row is gone from the sheet and the rejection is recorded in storage.
-    assert outcome.rows_removed == 1
+    # Both rows are gone from the sheet, each recorded under its own status.
+    assert outcome.rows_removed == 2
     assert fake.values_by_tab[APPLICATIONS_TAB] == [list(HEADERS)]
     assert store.get_application("rej1").status == "rejected"
-    # The rejected application was dropped from the upsert; only the fresh one
-    # was appended — nothing resurrects the deleted row.
+    assert store.get_application("wit1").status == "withdrawn"
+    # The discarded applications were dropped from the upsert; only the fresh one
+    # was appended — nothing resurrects the deleted rows.
     assert outcome.rows_appended == 1
     (appended,) = fake.appended
     assert 'https://a/new' in str(appended["body"]["values"])
     assert 'rej1' not in str(appended["body"]["values"])
+    assert 'wit1' not in str(appended["body"]["values"])
     store.close()
 
 

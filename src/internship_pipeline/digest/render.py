@@ -103,6 +103,11 @@ def render_digest_text(
         f"Networking actions ready (LinkedIn, sent by you): {len(networking_actions or [])}",
         f"Possible replies to review: {len(replies or [])}",
     ]
+    if counts.get("tracker_rows_removed", 0):
+        lines.append(
+            f"Tracker rows removed (marked rejected/withdrawn): "
+            f"{counts['tracker_rows_removed']}"
+        )
     if sheet_url:
         lines.append(f"Application tracker: {sheet_url}")
     lines += [

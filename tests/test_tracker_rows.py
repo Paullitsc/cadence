@@ -18,7 +18,7 @@ from internship_pipeline.tracker.rows import (
     HEADERS,
     plan_answers_upsert,
     plan_applications_upsert,
-    plan_rejected_removals,
+    plan_status_removals,
     spreadsheet_url,
 )
 
@@ -185,7 +185,7 @@ def _sheet_row(key: str, status: str) -> list[str]:
     return row
 
 
-def test_rejected_rows_are_planned_for_removal():
+def test_rejected_and_withdrawn_rows_are_planned_for_removal():
     existing = [
         HEADERS,
         _sheet_row("k1", "prepared"),
@@ -193,19 +193,29 @@ def test_rejected_rows_are_planned_for_removal():
         _sheet_row("k3", "REJECTED"),  # case-insensitive: typed over the dropdown
         _sheet_row("k4", "interviewing"),
         _sheet_row("k5", "rejected"),
+        _sheet_row("k6", "withdrawn"),
+        _sheet_row("k7", "Withdrawn"),  # case-insensitive here too
     ]
-    row_numbers, keys = plan_rejected_removals(existing)
-    assert row_numbers == [3, 4, 6]  # 1-based sheet rows (row 1 is the header)
-    assert keys == ["k2", "k3", "k5"]
+    row_numbers, removals = plan_status_removals(existing)
+    assert row_numbers == [3, 4, 6, 7, 8]  # 1-based sheet rows (row 1 is the header)
+    # The status rides along so storage records rejected vs. withdrawn correctly.
+    assert removals == [
+        ("k2", "rejected"),
+        ("k3", "rejected"),
+        ("k5", "rejected"),
+        ("k6", "withdrawn"),
+        ("k7", "withdrawn"),
+    ]
 
 
-def test_rejected_row_without_dedupe_key_is_left_alone():
-    hand_added = [""] * len(HEADERS)
-    hand_added[COL_STATUS] = "rejected"  # human's own row — not ours to delete
-    row_numbers, keys = plan_rejected_removals([HEADERS, hand_added])
-    assert row_numbers == [] and keys == []
+def test_removal_row_without_dedupe_key_is_left_alone():
+    for status in ("rejected", "withdrawn"):
+        hand_added = [""] * len(HEADERS)
+        hand_added[COL_STATUS] = status  # human's own row — not ours to delete
+        row_numbers, removals = plan_status_removals([HEADERS, hand_added])
+        assert row_numbers == [] and removals == []
 
 
-def test_no_rejections_is_a_no_op():
+def test_no_removals_is_a_no_op():
     existing = [HEADERS, _sheet_row("k1", "prepared"), _sheet_row("k2", "offer")]
-    assert plan_rejected_removals(existing) == ([], [])
+    assert plan_status_removals(existing) == ([], [])
