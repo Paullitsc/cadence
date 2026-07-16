@@ -217,6 +217,20 @@ class Settings(BaseSettings):
     # free-text questions are drafted, and this cap bounds that LLM spend.
     max_question_drafts_per_run: int = 15
 
+    # --- Phase 6: networking campaigns (LinkedIn-first, human-executed) ---
+    # Target companies + people live in this YAML (the committed 8VC seed); missing
+    # file → the networking stage logs one line and no-ops. The pipeline DRAFTS
+    # connect notes / messages and runs the timers; the human sends everything on
+    # LinkedIn by hand and flips each row's Status on the sheet's Networking tab.
+    networking_targets_file: str = "networking_targets.yaml"
+    # Top-up cap on unsent connect notes: the stage drafts new ones only until this
+    # many rows sit at connect_drafted (~25/week keeps LinkedIn volume safely low).
+    networking_daily_connects: int = 5
+    # A sent connect with no accept after this many days escalates to email_due.
+    networking_accept_window_days: int = 10
+    # A sent message with no reply after this many days escalates to email_due.
+    networking_reply_window_days: int = 7
+
     # --- CV review app (local, human-in-the-loop CV selection) ---
     # `python -m internship_pipeline.review` serves the review UI on localhost:
     # the AI's recommended experience/project bullets come prechecked, the human
@@ -303,6 +317,9 @@ def build_dry_run_settings(*, work_dir: Optional[str] = None) -> Settings:
         digest_dir=str(base / "digests"),
         resume_output_dir=str(base / "resumes"),
         target_companies="Dry Run Labs",  # → one favorable role → dual-trigger
+        # Point at a non-existent file so the dry run doesn't seed the real
+        # 8VC campaign into its throwaway database (the stage cleanly no-ops).
+        networking_targets_file=str(base / "networking_targets.yaml"),
         fit_score_threshold=0.0,
         high_priority_threshold=0.0,
         outreach_from_name="Dry Run Candidate",

@@ -19,6 +19,7 @@ from jinja2 import Environment, FileSystemLoader
 from ..models import Job, Outreach
 
 if TYPE_CHECKING:  # avoid importing the Gmail path just for a type hint
+    from ..networking.sequence import HumanAction
     from ..outreach.replies import Reply
 
 _TEMPLATES = Path(__file__).parent / "templates"
@@ -44,6 +45,7 @@ def _digest_context(
     pending_outreach: Optional[list[Outreach]],
     replies: "Optional[list[Reply]]",
     sheet_url: Optional[str],
+    networking_actions: "Optional[list[HumanAction]]",
 ) -> dict:
     counts = dict(counts or {})
     counts.setdefault("new", len(jobs))
@@ -54,6 +56,7 @@ def _digest_context(
         "pending_outreach": pending_outreach or [],
         "replies": replies or [],
         "sheet_url": sheet_url,
+        "networking_actions": networking_actions or [],
     }
 
 
@@ -66,11 +69,13 @@ def render_digest(
     pending_outreach: Optional[list[Outreach]] = None,
     replies: "Optional[list[Reply]]" = None,
     sheet_url: Optional[str] = None,
+    networking_actions: "Optional[list[HumanAction]]" = None,
 ) -> str:
     """Render the digest HTML."""
     ctx = _digest_context(
         jobs=jobs, run_id=run_id, generated_at=generated_at, counts=counts,
         pending_outreach=pending_outreach, replies=replies, sheet_url=sheet_url,
+        networking_actions=networking_actions,
     )
     return _env().get_template("digest.html.j2").render(**ctx)
 
@@ -83,6 +88,7 @@ def render_digest_text(
     pending_outreach: Optional[list[Outreach]] = None,
     replies: "Optional[list[Reply]]" = None,
     sheet_url: Optional[str] = None,
+    networking_actions: "Optional[list[HumanAction]]" = None,
 ) -> str:
     """A short plain-text summary (the alternative part of the digest email)."""
     counts = dict(counts or {})
@@ -94,6 +100,7 @@ def render_digest_text(
         f"Awaiting your CV review (make review): {counts.get('applications_pending', 0)}",
         f"LLM calls saved (CV grouping): {counts.get('llm_calls_saved', 0)}",
         f"Outreach drafts awaiting approval: {len(pending_outreach or [])}",
+        f"Networking actions ready (LinkedIn, sent by you): {len(networking_actions or [])}",
         f"Possible replies to review: {len(replies or [])}",
     ]
     if sheet_url:

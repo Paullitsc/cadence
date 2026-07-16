@@ -30,6 +30,7 @@ from ..models import (
     StageContext,
     StageResult,
 )
+from ..networking.sequence import awaiting_person_count, outstanding_actions
 from ..outreach.replies import correlate_replies, scan_replies
 from ..tracker.rows import spreadsheet_url
 
@@ -95,6 +96,12 @@ def run(ctx: StageContext) -> StageResult:
     )
     replies = _safe(lambda: scan_replies(s), [], ctx, "reply scan")
 
+    # Networking ladder (Phase 6): the human's current LinkedIn to-dos, read from
+    # storage (not ctx.data) so the digest is complete even when this stage runs
+    # standalone. Best-effort like every other section.
+    networking_people = _safe(lambda: storage.list_people(), [], ctx, "networking people")
+    networking_actions = outstanding_actions(networking_people)
+
     # Track the outreach lifecycle: a reply from a contact we emailed moves the
     # row sent -> replied (a storage write, not an outbound action).
     replied_rows = _safe(
@@ -115,12 +122,15 @@ def run(ctx: StageContext) -> StageResult:
         "outreach_pending": len(pending_outreach),
         "replies_found": len(replies),
         "replied_matched": len(replied_rows),
+        "networking_actions": len(networking_actions),
+        "networking_awaiting_person": awaiting_person_count(networking_people),
     }
     sheet_url = spreadsheet_url(s.sheets_spreadsheet_id) if s.sheets_spreadsheet_id else None
 
     html = render_digest(
         jobs=new_jobs, run_id=ctx.run_id, counts=counts,
         pending_outreach=pending_outreach, replies=replies, sheet_url=sheet_url,
+        networking_actions=networking_actions,
     )
     path = write_digest(html, s.digest_dir)
 
@@ -129,6 +139,7 @@ def run(ctx: StageContext) -> StageResult:
         text = render_digest_text(
             jobs=new_jobs, run_id=ctx.run_id, counts=counts,
             pending_outreach=pending_outreach, replies=replies, sheet_url=sheet_url,
+            networking_actions=networking_actions,
         )
         emailed = send_digest_email(html=html, text=text, settings=s)
 
@@ -141,7 +152,8 @@ def run(ctx: StageContext) -> StageResult:
         counts={"new_jobs_today": len(new_jobs), "digest_written": 1, "digest_emailed": int(emailed),
                 "outreach_pending": len(pending_outreach), "applications_pending": len(pending_apps),
                 "applications_expired": expired_count,
-                "replies_found": len(replies), "outreach_replied": len(replied_rows)},
+                "replies_found": len(replies), "outreach_replied": len(replied_rows),
+                "networking_actions": len(networking_actions)},
         notes=str(path),
     )
 

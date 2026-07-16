@@ -26,6 +26,8 @@
     .stats b { font-variant-numeric: tabular-nums; }
     .tracker { display: inline-block; margin: 6px 0 4px; padding: 8px 14px; border-radius: 6px;
                background: #e8f0fe; font-weight: 600; }
+    pre.draft { background: #f8f8f8; border: 1px solid #eee; border-radius: 4px; padding: 8px 10px;
+                white-space: pre-wrap; font-size: 12.5px; margin: 6px 0 10px; }
     footer { margin-top: 28px; color: #999; font-size: 12px; }
   </style>
 </head>
@@ -51,6 +53,37 @@
   {% else %}
   <p class="hint">Tracker sheet not configured — applications live in storage
     (see ACTIONS_FOR_PAUL.md to set up the Google Sheet).</p>
+  {% endif %}
+
+  {# --- Networking ladder (Phase 6): drafted by the pipeline, sent by the human. --- #}
+  {% if networking_actions or counts.get('networking_awaiting_person', 0) %}
+  <h2>Networking — today's LinkedIn actions</h2>
+  <p class="hint">Copy each draft into LinkedIn by hand, then flip the row's Status on the
+    sheet's <b>Networking</b> tab. LinkedIn is never automated.</p>
+  {% if networking_actions %}
+  <table>
+    {% for a in networking_actions[:20] %}
+    <tr>
+      <td class="meta2">{{ a.kind }}</td>
+      <td>{{ a.person.company_name }}{% if a.person.name %} — {{ a.person.name }}{% endif %}
+        {%- if a.person.role %} <span class="meta2">({{ a.person.role }})</span>{% endif %}
+        {% if a.person.linkedin_url %} · <a href="{{ a.person.linkedin_url }}">profile</a>{% endif %}
+        <div class="meta2">{{ a.instruction }}</div>
+        {% if a.person.draft_body %}<pre class="draft">{{ a.person.draft_body }}</pre>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if networking_actions|length > 20 %}
+  <p class="hint">+{{ networking_actions|length - 20 }} more on the Networking tab.</p>
+  {% endif %}
+  {% else %}
+  <p class="empty">Nothing due today.</p>
+  {% endif %}
+  {% if counts.get('networking_awaiting_person', 0) %}
+  <p class="hint"><b>{{ counts.get('networking_awaiting_person', 0) }}</b> target companies still
+    need a person picked — fill Person + LinkedIn on the Networking tab (company pages are linked).</p>
+  {% endif %}
   {% endif %}
 
   {# --- Outreach drafts awaiting approval — the inbox's real job. --- #}

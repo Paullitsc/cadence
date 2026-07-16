@@ -101,3 +101,30 @@ CREATE TABLE IF NOT EXISTS suppressions (
     reason      TEXT,
     created_at  TEXT NOT NULL
 );
+
+-- Phase 6: networking campaign people (one row per person per target company;
+-- LinkedIn ladder state machine — see networking/models.py). Mirrors the
+-- SQLiteStore SCHEMA constant, which is what actually self-initializes.
+CREATE TABLE IF NOT EXISTS people (
+    person_id         TEXT PRIMARY KEY,   -- make_person_id(campaign, company, n)
+    campaign          TEXT NOT NULL DEFAULT 'default',
+    company_name      TEXT NOT NULL,
+    company_domain    TEXT,
+    company_website   TEXT,
+    company_linkedin  TEXT,
+    company_blurb     TEXT NOT NULL DEFAULT '',
+    tier              INTEGER NOT NULL DEFAULT 2,
+    name              TEXT,
+    role              TEXT,
+    linkedin_url      TEXT,
+    email             TEXT,
+    status            TEXT NOT NULL DEFAULT 'queued',
+    status_changed_at TEXT,               -- escalation timers measure from here
+    draft_kind        TEXT,               -- connect | message (6b: email)
+    draft_subject     TEXT,               -- email only (Phase 6b)
+    draft_body        TEXT NOT NULL DEFAULT '',
+    used_llm          INTEGER NOT NULL DEFAULT 0,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_people_status ON people (status);

@@ -24,6 +24,7 @@ from .stages import (
     draft_outreach,
     log_and_digest,
     match_and_slice,
+    networking,
     prepare_applications,
     source,
     sync_tracker,
@@ -31,12 +32,14 @@ from .stages import (
 
 # Ordered registry of stage name -> run function. sync_tracker runs after
 # prepare_applications (its rows are final) and before log_and_digest (so the
-# digest can link to the freshly-synced sheet).
+# digest can link to the freshly-synced sheet). networking is job-independent
+# and only needs to precede log_and_digest (the digest lists its due actions).
 REGISTRY: dict[str, Callable[[StageContext], StageResult]] = {
     source.NAME: source.run,
     match_and_slice.NAME: match_and_slice.run,
     draft_outreach.NAME: draft_outreach.run,
     prepare_applications.NAME: prepare_applications.run,
+    networking.NAME: networking.run,
     sync_tracker.NAME: sync_tracker.run,
     log_and_digest.NAME: log_and_digest.run,
 }

@@ -1,0 +1,1447 @@
+# Networking campaign targets (Phase 6) — seeded from https://8vc.com/companies,
+# verified against the live page 2026-07-15. The 10 companies 8VC marks "Exited"
+# (incl. Palantir, Asana, Hims) are excluded — you can't intern at an exit.
+#
+# Schema (loaded by internship_pipeline/networking/targets.py):
+#   campaign: short slug — prefixes every person id so a second campaign file
+#       could coexist later without id collisions.
+#   companies[]:
+#     name (required)     display name
+#     tier                1 = Seed/Series A (founders/CTOs are reachable),
+#                         2 = Series B or unlabeled on 8VC's page,
+#                         3 = Series C+/Growth (aim for recruiters/eng managers).
+#                         The daily connect-draft budget is spent tier 1 first.
+#     stage               8VC's own stage label (informational)
+#     website / domain    company site; domain feeds the Phase-6b email lookup
+#     company_linkedin    the company's LinkedIn page — where you find PEOPLE
+#     blurb               8VC's own one-paragraph description — the only company
+#                         facts the drafting step may use (anti-hallucination)
+#     people[] (optional) who to contact; each entry becomes one networking row:
+#       - name: Jane Doe
+#         role: CTO                                  # optional
+#         linkedin: https://linkedin.com/in/janedoe  # their profile (find by hand)
+#         email: jane@example.com                    # optional; 6b can look it up
+#
+# A company with no people entry still gets ONE placeholder row — fill in the
+# person on the sheet's Networking tab (or here) and the next daily run drafts
+# the connect note. This file is yours: edit tiers/blurbs, delete companies,
+# add people freely. Removing a company here never deletes its stored history.
+# One rule: person ids are POSITIONAL — append new people at the END of a
+# company's list and never reorder it, or rows would swap identities.
+
+campaign: 8vc
+companies:
+- name: 180 Insurance
+  tier: 1
+  stage: Series A
+  website: https://www.180s.com.br/
+  domain: 180s.com.br
+  company_linkedin: https://www.linkedin.com/company/180-insurance
+  blurb: 180° is an InsurTech company that provides insurance services. With a focus on the B2B2C
+    model, the company builds insurance and assistance products with technology that are connected
+    to customers' daily lives in a simple and digital way.
+- name: AgVend
+  tier: 1
+  stage: Series A
+  website: https://www.agvend.com/
+  domain: agvend.com
+  company_linkedin: https://www.linkedin.com/company/agvend
+  blurb: AgVend is the leading provider of digital engagement software to serve the producer of tomorrow.
+    Their white-labeled information and commerce portals are designed to strengthen the relationship
+    between the ag distribution channel and their grower-customers.
+- name: Alloy
+  tier: 1
+  stage: Series A
+  website: https://alloy.ai/
+  domain: alloy.ai
+  company_linkedin: https://www.linkedin.com/company/alloy-inc/
+  blurb: Alloy equips consumer goods brands to capture demand and streamline supply by breaking down
+    silos within and across supply chain, sales and marketing teams. Alloy's cloud platform couples
+    end-to-end inventory and shipment visibility with sell-in and sell-through analytics to surface
+    relevant insights in real-time.
+- name: Cambium
+  tier: 1
+  stage: Series A
+  website: https://www.cambiumglobal.com
+  domain: cambiumglobal.com
+  company_linkedin: https://www.linkedin.com/company/cambium-bio/
+  blurb: Cambium is a leader in advanced material innovation for high-performance sectors, leveraging
+    an AI-driven materials platform and integrated chemistry, materials science, biology, and manufacturing
+    to accelerate the development and scale of next-generation materials. Together, Cambium and SHD
+    deliver a seamless path from material discovery to certified, high-volume production.
+- name: Cartography
+  tier: 1
+  stage: Series A
+  website: https://cartography.bio/
+  domain: cartography.bio
+  company_linkedin: https://www.linkedin.com/company/cartographybio/
+  blurb: Cartography Biosciences is a precision immunotherapy company developing the next-generation
+    of targeted cancer therapies. Cartography is creating the first antigen atlas to identify targets
+    that are specific to cancer, through comprehensive profiling of both healthy and tumor tissues,
+    and using these insights to develop a pipeline of immunotherapies that are both safer and more
+    effective.
+- name: Cellanome
+  tier: 1
+  stage: Series A
+  website: https://cellanome.com/
+  domain: cellanome.com
+  blurb: Cellanome is an integrative multi-omics platform that measures biology in an unprecedented
+    resolution and scale using proprietary technology. It engages in cutting-edge synthetic biology
+    and informatics methods.
+- name: Cellino Bio
+  tier: 1
+  stage: Series A
+  website: https://www.cellinobio.com/
+  domain: cellinobio.com
+  company_linkedin: https://www.linkedin.com/company/cellinobio/
+  blurb: Cellino Biotech develops intracellular delivery lasers and nanotechnology for gene editing
+    applications.
+- name: Chaos
+  tier: 1
+  stage: Series A
+  website: https://chaosinc.com/
+  domain: chaosinc.com
+  company_linkedin: https://www.linkedin.com/company/chaosindustries/
+  blurb: Chaos Industries is a technology company that is building the next generation of defense
+    and critical industry technologies. Applying an engineering-led strategy, Chaos provides mission-driven,
+    world-class engineers with a platform to build solutions to critical real-world problems.
+- name: Coram.ai
+  tier: 1
+  stage: Seed
+  website: http://www.coram.ai
+  domain: coram.ai
+  company_linkedin: https://www.linkedin.com/company/coram-ai
+  blurb: Coram AI builds video intelligence systems for businesses of all sizes. With Coram AI, each
+    camera "works for you" instead of just being a video recorder. Coram AI helps our customers gain
+    new insights into their operations, safety, and security.
+- name: CX2
+  tier: 1
+  stage: Seed
+  website: https://www.cx2.com/
+  domain: cx2.com
+  company_linkedin: https://www.linkedin.com/company/cx2-industries
+  blurb: The future of warfare will be fought and won in the electromagnetic spectrum. In battlefields
+    dominated by remotely-operated, unmanned systems, connectivity and control are as critical as
+    firepower. The RF spectrum is the new frontline. CX2 isfighting to deliver spectrum dominance
+    for the United States and our Allies.
+- name: Esper
+  tier: 1
+  stage: Series A
+  website: https://esper.com/
+  domain: esper.com
+  company_linkedin: https://www.linkedin.com/company/esper-regulatory-technologies/
+  blurb: Esper is the first cloud-based software to manage the end-to-end policymaking process. Policymakers
+    save time and resources with a single source of truth for all policymaking activity.
+- name: Fieldguide
+  tier: 1
+  stage: Series A
+  website: https://www.fieldguide.io/
+  domain: fieldguide.io
+  company_linkedin: https://www.linkedin.com/company/fieldguide-inc
+  blurb: Fieldguide is an enterprise software company building automation and collaboration software
+    for assurance and advisory firms. Built by former Big Four practitioners and experienced technology
+    leaders, their platform digitizes the end-to-end engagement workflow on a single, cloud-native
+    platform.
+- name: Fig.1
+  tier: 1
+  stage: Series A
+  website: https://fig-1.co/
+  domain: fig-1.co
+  company_linkedin: https://www.linkedin.com/company/fig1co
+  blurb: 'Fig.1 Beauty share a lifelong passion for skincare, as well as a common vision: Demystify
+    and democratize skincare, making skin health achievable for everyone.'
+- name: Gatsby
+  tier: 1
+  stage: Seed
+  website: https://gatsby.events/
+  domain: gatsby.events
+  company_linkedin: https://www.linkedin.com/company/gatsby-events
+  blurb: Gatsby is a new event tool built for teams, to make guest list planning and event coordination
+    a breeze. They combine the beauty of invites with the behind-the-scenes functionality needed to
+    execute on an unforgettable event — and the follow-up conversations that follow.
+- name: Harbor Health
+  tier: 1
+  stage: Series A
+  website: https://www.harborhealth.com/
+  domain: harborhealth.com
+  company_linkedin: https://www.linkedin.com/company/harbor-health-team
+  blurb: Harbor was created by people with decades of experience who wanted health to actually—and
+    finally—work. Today, they're realizing their shared vision. From those who give health to those
+    who figure out how to pay for it, they're all working together to run this totally new model of
+    co-created health in Austin.
+- name: Keycare
+  tier: 1
+  stage: Series A
+  website: https://www.keycare.org/
+  domain: keycare.org
+  company_linkedin: https://www.linkedin.com/company/keycareinc/
+  blurb: KeyCare offers health systems the ability to easily augment their care teams, optimize capacity,
+    and widen their digital front doors by partnering with a nationwide network of virtual care groups.
+- name: Luminary
+  tier: 1
+  stage: Seed
+  website: https://www.withluminary.com/
+  domain: withluminary.com
+  blurb: More than $100 billion in family and philanthropic giving capacity is created each year.
+    But flaws in the current process impose over a billion in annual costs in order to access it.
+    Luminary is building the first product for wealth managers to automate the complex, and inefficient
+    estate planning process.
+- name: Opencare
+  tier: 1
+  stage: Series A
+  website: https://www.opencare.com/
+  domain: opencare.com
+  company_linkedin: https://www.linkedin.com/company/opencare-com/
+  blurb: Opencare is focused on connecting patients to exceptional dental care, which means only recommending
+    the top 10% of dentists in the city.
+- name: Opto
+  tier: 1
+  stage: Series A
+  website: https://www.optoinvest.com/
+  domain: optoinvest.com
+  company_linkedin: https://www.linkedin.com/company/optoinvest/
+  blurb: Opto's investment platform provides financial advisors with expert insights and tools to
+    help them discover, execute, and service private investment strategies that help their clients
+    build long term wealth.
+- name: Oula
+  tier: 1
+  stage: Series A
+  website: https://oulahealth.com/
+  domain: oulahealth.com
+  company_linkedin: https://www.linkedin.com/company/oula-health
+  blurb: Oula is redesigning maternity care from the ground up. Their modern maternity center combines
+    the best of obstetrics and midwifery care to deliver a more evidence-based and personalized pregnancy
+    experience. From their collaborative medical team, welcoming clinic, and remote care platform,
+    Oula is setting a new standard for pregnancy that unifies modern medicine and human intuition.
+- name: Ritten
+  tier: 1
+  stage: Series A
+  website: https://www.ritten.io/
+  domain: ritten.io
+  company_linkedin: https://www.linkedin.com/company/rittensoftware/
+  blurb: Ritten delivers cutting-edge medical records software that helps clinicians and administrators
+    provide personalized, data-informed care.‍
+- name: Rocketlane
+  tier: 1
+  stage: Series A
+  website: https://www.rocketlane.com/
+  domain: rocketlane.com
+  company_linkedin: https://www.linkedin.com/company/rocketlane/
+  blurb: Rocketlane is purpose-built software to accelerate and streamline implementation and customer
+    onboarding. With its unified workspace, it’s easy to collaborate with customers and deliver projects
+    consistently, transparently, and delightfully. Moreover, Rocketlane helps you automate repetitive
+    tasks and identify patterns across multiple projects to drive your execution strategy.
+- name: Software
+  tier: 1
+  stage: Series A
+  website: https://www.software.com/
+  domain: software.com
+  company_linkedin: https://www.linkedin.com/company/softwaredotcom
+  blurb: Great software development starts with better visibility. Measure and improve your organization’s
+    DevOps performance with real-time insights.
+- name: Standard Metrics
+  tier: 1
+  stage: Series A
+  website: https://standardmetrics.io/
+  domain: standardmetrics.io
+  company_linkedin: https://www.linkedin.com/company/standardmetrics
+  blurb: Standard Metrics is an automated data platform that enables financial transparency between
+    startups and investors, empowering founders to make better decisions in scaling their companies.
+- name: TAP
+  tier: 1
+  stage: Seed
+  website: https://tap3d.com/
+  domain: tap3d.com
+  blurb: TAP || 8VC
+- name: Tilda
+  tier: 1
+  stage: Series A
+  website: http://tilda.bio/
+  domain: tilda.bio
+  company_linkedin: https://www.linkedin.com/company/tildaresearch/
+  blurb: Tilda Research, based in San Francisco, is an innovator in clinical research execution. They
+    focus on data integration, site-wide automation and real-time operational metrics to enable faster
+    bench-to-market solutions for our research partners. They operate a growing network of clinical
+    research sites in the US, and their team has worked on over 250 pan-indication Phase I thru IV
+    studies.
+- name: Vector
+  tier: 1
+  stage: Series A
+  website: https://www.withvector.com/
+  domain: withvector.com
+  company_linkedin: https://www.linkedin.com/company/withvector
+  blurb: Vector, the mobile-first workflow and transportation management platform for shippers, logistics
+    brokers, and carriers. Vector's LoadDocs product helps one reduce operational friction and increase
+    productivity by streamlining workflows with electronic forms and best-in-class document capture.‍
+- name: Affinity
+  tier: 2
+  stage: unknown
+  website: https://www.affinity.co/
+  domain: affinity.co
+  company_linkedin: https://www.linkedin.com/company/project-affinity
+  blurb: Affinity’s patented technology structures and analyzes millions of data points across emails,
+    calendars, and third-party sources to offer users the tools they need to automatically manage
+    their most valuable relationships, prioritize important connections, and discover untapped opportunities.
+- name: AI21 Labs
+  tier: 2
+  stage: unknown
+  website: https://www.ai21.com/
+  domain: ai21.com
+  company_linkedin: https://www.linkedin.com/company/ai21/
+  blurb: AI21 Labs is reimagining the way humans read and write, for the better.
+- name: Airbyte
+  tier: 2
+  stage: unknown
+  website: https://airbyte.com/
+  domain: airbyte.com
+  company_linkedin: https://www.linkedin.com/company/airbytehq
+  blurb: Founded in 2020, Airbyte is the open-source standard for EL(T). They enable data teams to
+    replicate data from applications, APIs, and databases to data warehouses, lakes, and other destinations.
+- name: Altos Labs
+  tier: 2
+  stage: unknown
+  website: https://altoslabs.com/
+  domain: altoslabs.com
+  company_linkedin: https://www.linkedin.com/company/altoslabs
+  blurb: Altos Labs™ is a biotechnology company focused on cellular rejuvenation programming to restore
+    cell health and resilience, with the goal of reversing disease to transform medicine. The company
+    comprises a community of leading scientists, clinicians, and leaders from both academia and industry
+    working together towards this common mission.
+- name: American Operator
+  tier: 2
+  stage: unknown
+  website: https://americanoperator.com/
+  domain: americanoperator.com
+  company_linkedin: https://www.linkedin.com/company/americanoperator
+- name: Anduin
+  tier: 2
+  stage: Series B
+  website: https://www.anduintransact.com/
+  domain: anduintransact.com
+  company_linkedin: https://www.linkedin.com/company/anduin-transactions/
+  blurb: Anduin is a deal tech company committed to providing the alternative investment market with
+    simple, yet powerful tools to streamline the deal process. Anduin brings trust and liquidity to
+    private market transactions, helping all parties better understand and execute fair outcome.
+- name: Arcos Labs
+  tier: 2
+  stage: unknown
+  website: https://www.arcoslabs.com/
+  domain: arcoslabs.com
+  company_linkedin: https://www.linkedin.com/company/arcos-labs/
+  blurb: Rethinking the practice of law
+- name: Armadin
+  tier: 2
+  stage: unknown
+  website: https://www.armadin.com/
+  domain: armadin.com
+  company_linkedin: https://www.linkedin.com/company/armadin/
+  blurb: Armadin is an AI-native cybersecurity company focused on building the ultimate attacker.
+    With AI-powered hyperattacks looming on the horizon, Armadin’s customers leverage our platform
+    to proactively find and eliminate exploitable risk. Armadin’s swarm of AI agents operate relentlessly
+    across the entire attack surface, uncovering real kill chains that require immediate action.
+- name: Augment
+  tier: 2
+  stage: unknown
+  website: https://www.goaugment.com/
+  domain: goaugment.com
+  company_linkedin: https://www.linkedin.com/company/goaugment/
+  blurb: Augment is building fully autonomous AI assistants for the logistics industry.
+- name: Aviatrix
+  tier: 2
+  stage: unknown
+  website: https://aviatrix.com/
+  domain: aviatrix.com
+  company_linkedin: https://www.linkedin.com/company/aviatrix-systems
+  blurb: Aviatrix cloud network platform delivers advanced networking, security and operational visibility
+    required by enterprises with the simplicity and automation of cloud.
+- name: Bedrock Robotics
+  tier: 2
+  stage: unknown
+  website: https://bedrockrobotics.com/
+  domain: bedrockrobotics.com
+  company_linkedin: https://www.linkedin.com/company/bedrock-robotics/
+  blurb: Bedrock Robotics focuses on automating specialized heavy equipment in the construction and
+    earth-moving sectors. The company develops upfit hardware for vehicles, machine learning models
+    for autonomy, and cloud systems to enhance the capabilities of construction equipment. It primarily
+    serves the robotics industry.
+- name: Bespoke Labs
+  tier: 2
+  stage: unknown
+  website: https://www.bespokelabs.ai/
+  domain: bespokelabs.ai
+  company_linkedin: https://www.linkedin.com/company/bespokelabsai/
+  blurb: Bespoke Labs is a venture funded startup creating AI tools for data curation and post-training
+    LLMs.
+- name: BigHat Biosciences
+  tier: 2
+  stage: Series B
+  website: https://www.bighatbio.com/
+  domain: bighatbio.com
+  company_linkedin: https://www.linkedin.com/company/bighat-biosciences/
+  blurb: BigHat’s mission is to improve human health by making it far easier to design advanced, next-generation
+    antibody therapeutics. Our AI-enabled experimental platform integrates a high-speed characterization
+    or “wet” lab with machine learning technologies to speed the antibody engineering process.
+- name: Blend
+  tier: 2
+  stage: unknown
+  website: https://blend.com/
+  domain: blend.com
+  company_linkedin: https://www.linkedin.com/company/blend-
+  blurb: Blend is the infrastructure powering the future of banking. Financial providers — from large
+    banks, fintechs, and credit unions to community and independent mortgage banks — use Blend’s platform
+    to transform banking experiences for their customers. Blend powers billions of financial transactions
+    every day.
+- name: Bobyard
+  tier: 2
+  stage: unknown
+  website: https://www.bobyard.com/
+  domain: bobyard.com
+  company_linkedin: https://www.linkedin.com/company/bobyard/
+  blurb: Bobyard automates the construction takeoff process with CV and NLP models to make cost estimates
+    10x faster while eliminating mistakes.
+- name: Branch
+  tier: 2
+  stage: unknown
+  website: https://branch.co/
+  domain: branch.co
+  company_linkedin: https://www.linkedin.com/company/branch-co
+  blurb: Branch delivers world-class financial services to the mobile generation. With offices in
+    San Francisco, Lagos, Nairobi, Mumbai and Bangalore, Branch is a for-profit socially conscious
+    company that uses the power of data science to reduce the cost of delivering financial services
+    in emerging markets. Branch believes that everyone, everywhere deserves fair financial access.
+- name: Candid Health
+  tier: 2
+  stage: Series B
+  website: https://www.joincandidhealth.com/
+  domain: joincandidhealth.com
+  company_linkedin: https://www.linkedin.com/company/candid-health
+  blurb: Candid Health is building a modern medical payments platform that enables healthcare providers
+    to focus on delivering high-quality, affordable and accessible care, rather than spending half
+    their time figuring out how to get paid by insurance.
+- name: Casetext
+  tier: 2
+  stage: unknown
+  website: https://casetext.com/
+  domain: casetext.com
+  company_linkedin: https://www.linkedin.com/company/casetext/
+  blurb: casetext is developing revolutionary new legal AI tools such CoCounsel, which can complete
+    document review, legal research memos, deposition preparation, and contract analysis in minutes
+    — with results lawyers can trust.
+- name: Citizen
+  tier: 2
+  stage: Series B
+  website: https://citizen.com/
+  domain: citizen.com
+  company_linkedin: https://www.linkedin.com/company/citizen.com
+  blurb: Citizen is the No. 1 public safety app in the U.S., with a mission to make the world a safer
+    place. Citizen provides 911 alerts so people can use their phones to keep themselves, and the
+    people and places they love, safe. Citizen has notified people to evacuate burning buildings,
+    deterred school buses from nearby terrorist attacks, and led to the rescue of kidnapped children
+    and missing people.
+- name: Cognition
+  tier: 2
+  stage: unknown
+  website: https://www.cognition.ai/
+  domain: cognition.ai
+  company_linkedin: https://www.linkedin.com/company/cognition-ai-labs/
+  blurb: Makers of Devin, the first AI software engineer. Cognition is an applied AI lab focused on
+    reasoning. They're building AI teammates with capabilities far beyond today’s existing AI tools.
+    By solving reasoning, they can unlock new possibilities in a wide range of disciplines—code is
+    just the beginning.
+- name: Color
+  tier: 2
+  stage: unknown
+  website: https://www.color.com/
+  domain: color.com
+  company_linkedin: https://www.linkedin.com/company/color/
+  blurb: Color Health provides the infrastructure to support durable and equitable public health across
+    entire populations. Color’s technology and clinical services are the backbone of large-scale population
+    health programs for over 200 institutions worldwide, with data and services spanning hereditary
+    cancers, heart disease, infectious disease testing (including COVID-19), and community-based vaccination…
+- name: Create
+  tier: 2
+  stage: unknown
+  website: https://createmedicines.com/
+  domain: createmedicines.com
+  company_linkedin: https://www.linkedin.com/company/createmedicines/
+  blurb: CREATE Medicines is a clinical-stage biotech pioneering in vivo multi-immune programming.
+    Its proprietary mRNA-LNP platform directly programs immune cells inside the body to deliver scalable,
+    repeat-dose, off-the-shelf immunotherapies.
+- name: DataHub
+  tier: 2
+  stage: unknown
+  website: https://datahub.com/
+  domain: datahub.com
+  company_linkedin: https://www.linkedin.com/company/datahub-cloud/
+  blurb: 'DataHub is the #1 open source platform with a uniquely scalable and extensible metadata
+    graph supporting manual and automated data management. DataHub Cloud is an enterprise-ready SaaS
+    solution providing a fully-managed service of DataHub with additional AI-powered capabilities
+    in discovery, observability, and governance to accelerate production-readiness of AI and data
+    assets.'
+- name: DayDream
+  tier: 2
+  stage: unknown
+  website: https://www.daydream.dental/
+  domain: daydream.dental
+  company_linkedin: https://www.linkedin.com/company/daydream-dental/
+  blurb: DayDream automates dental billing with AI + expert support—boosting collections, reducing
+    operational costs, and giving practices the ability to scale.
+- name: Dealpath
+  tier: 2
+  stage: unknown
+  website: https://www.dealpath.com/
+  domain: dealpath.com
+  company_linkedin: https://www.linkedin.com/company/dealpath/
+  blurb: Dealpath is the leading cloud-based deal management platform for real estate investment powering
+    hundreds of top firms.
+- name: Digital Diagnostics
+  tier: 2
+  stage: unknown
+  website: https://www.digitaldiagnostics.com/
+  domain: digitaldiagnostics.com
+  company_linkedin: https://www.linkedin.com/company/digital-diagnostics
+  blurb: Digital Diagnostics is a pioneering AI diagnostics company on a mission to transform the
+    quality, accessibility and affordability of healthcare. Founded and led by Dr. Michael Abramoff,
+    an ophthalmologist, neuroscientist and computer engineer, Digital Diagnostics developed a patented
+    biomarker-based approach to build autonomous algorithms that make clinical decisions without human
+    intervention.
+- name: Digital Surgery
+  tier: 2
+  stage: unknown
+  website: https://www.medtronic.com/covidien/en-us/products/digital-surgery.html
+  domain: medtronic.com
+  company_linkedin: https://www.linkedin.com/company/medtronic-digital-surgery?trk=similar-pages
+  blurb: Touch Surgery™ from Medtronic helps surgeons and health systems deliver consistent and high-quality
+    surgery through AI, data and visualization.‍
+- name: Dren Bio
+  tier: 2
+  stage: Series B
+  website: https://www.drenbio.com/
+  domain: drenbio.com
+  blurb: Dren Bio is a privately held, biopharmaceutical company focused on developing therapeutic
+    antibodies for the treatment of cancer, autoimmune and other serious diseases.
+- name: Edra
+  tier: 2
+  stage: unknown
+  website: https://www.edra.ai/
+  domain: edra.ai
+  company_linkedin: https://www.linkedin.com/company/edra-ai/
+  blurb: Edra studies your operations, turns your team's tribal knowledge into SOPs, and powers AI
+    agents that execute them - all from the data you already have.
+- name: Elemy
+  tier: 2
+  stage: unknown
+  website: https://www.elemy.com/
+  domain: elemy.com
+  company_linkedin: https://www.linkedin.com/company/elemy-care/
+  blurb: Elemy is a B2B2C platform for pediatric behavioral care, including pediatric autism. Elemy
+    leverages technology to deliver a better experience to families, providers, and healthcare payors.Since
+    launching in April 2020, Elemy has become one of the fastest-growing healthcare companies in the
+    United States, scaling from 8 to over 800 employees in about 1.5 years.‍
+- name: Enclave
+  tier: 2
+  stage: unknown
+  website: https://enclave.ai/
+  domain: enclave.ai
+  company_linkedin: https://www.linkedin.com/company/enclaveai/
+  blurb: AI writes code faster than teams can review it. Enclave keeps up. Enclave ingests your entire
+    repo, reasons across services, and surfaces the vulnerabilities that actually matter, with precise
+    fix instructions your team or your AI agent can act on immediately.
+- name: Fabrion
+  tier: 2
+  stage: unknown
+  website: https://www.fabrion.com/
+  domain: fabrion.com
+  company_linkedin: https://www.linkedin.com/company/fabrionai/
+- name: Flux
+  tier: 2
+  stage: unknown
+  website: https://www.flux.ai/p
+  domain: flux.ai
+  blurb: Flux is your AI intern for hardware design that helps you plan, research, and engineer complete
+    PCBs in a collaborative, browser-based eCAD.
+- name: Forethought
+  tier: 2
+  stage: unknown
+  website: https://forethought.ai/
+  domain: forethought.ai
+  company_linkedin: https://www.linkedin.com/company/forethought-ai/
+  blurb: Forethought is a leading generative AI company providing customer service automation that
+    helps support teams maximize efficiency and productivity.
+- name: Fractal
+  tier: 2
+  stage: Series B
+  website: https://www.fractalsoftware.com/
+  domain: fractalsoftware.com
+  company_linkedin: https://www.linkedin.com/company/fractal-software
+  blurb: Fractal Software is launching the next generation of vertical SaaS startups. They’re a collective
+    of former founders and operators who believe that all industries deserve best in class, modern
+    software to enhance their businesses. Fractal wants to partner with entrepreneurs who share the
+    same passion and conviction for these ideas.
+- name: Freight Waves
+  tier: 2
+  stage: unknown
+  website: https://www.freightwaves.com/
+  domain: freightwaves.com
+  company_linkedin: https://www.linkedin.com/company/freightwaves
+  blurb: FreightWaves is the leading FreightIntel provider, offering current digital intelligence
+    and context to the freight community on a central platform.FreightWaves'​ SaaS product, SONAR,
+    is the leading freight market analytics tool and dashboard, aggregating billions of data points
+    from hundreds of sources to provide the fastest data in the transportation and logistics sector.
+- name: Gallatin AI
+  tier: 2
+  stage: unknown
+  website: https://www.gallatin.ai/
+  domain: gallatin.ai
+  company_linkedin: https://www.linkedin.com/company/gallatinai/
+  blurb: Gallatin is building a logistics platform based on the needs and constraints of today's defense
+    industry. Gallatin's platform creates actionable insights across the tactical, operational, and
+    strategic levels providing integrated capabilities for first, middle, and last mile solutions
+    where they're needed most.
+- name: Generalist
+  tier: 2
+  stage: unknown
+  website: https://generalistai.com/
+  domain: generalistai.com
+  company_linkedin: https://www.linkedin.com/company/generalistai
+  blurb: Generalist is a frontier lab for robot intelligence that trains robot foundation models,
+    which generalize across thousands of form factors, environments, and tasks.
+- name: Glimpse
+  tier: 2
+  stage: unknown
+  website: https://tryglimpse.com/
+  domain: tryglimpse.com
+  company_linkedin: https://www.linkedin.com/company/try-glimpse/
+  blurb: Glimpse help brands turn deductions into a revenue engine by automating deductions retrieval,
+    validation, disputing, and accounting.
+- name: Guardant Health
+  tier: 2
+  stage: unknown
+  website: https://guardanthealth.com/
+  domain: guardanthealth.com
+  company_linkedin: https://www.linkedin.com/company/guardanthealth
+  blurb: Guardant Health is a leading precision oncology company focused on helping conquer cancer
+    globally through use of its proprietary blood tests, vast data sets and advanced analytics. The
+    Guardant Health oncology platform leverages capabilities to drive commercial adoption, improve
+    patient clinical outcomes and lower healthcare costs across all stages of the cancer care continuum.
+- name: Halo Health
+  tier: 2
+  stage: unknown
+  website: https://halomentalhealth.com/
+  domain: halomentalhealth.com
+  company_linkedin: https://www.linkedin.com/company/halo-mental-health/
+  blurb: Halo Health is revolutionizing primary mental healthcare with its immediate access to clinical
+    assessments and psychiatric care, both in person and virtually. Halo served over 1,000 patients
+    in their first year, keeping 95% of their patients out of the emergency rooms for psychiatric
+    emergencies.
+- name: HDVI
+  tier: 2
+  stage: Series B
+  website: https://hdvi.com/
+  domain: hdvi.com
+  company_linkedin: https://www.linkedin.com/company/gohdvi
+  blurb: HDVI provides commercial trucking fleets with best-in-class insurance backed by Munich Re
+    Specialty Insurance (A+ Rated by AM Best) and Spinnaker Insurance Company (A- Rated by AM Best).
+    HDVI also provides fleets with a powerful, easy-to-use solution to help them improve safety, compliance,
+    and profitability.
+- name: Hearth
+  tier: 2
+  stage: Series B
+  website: https://www.gethearth.com/
+  domain: gethearth.com
+  company_linkedin: https://www.linkedin.com/company/gethearth
+  blurb: Hearth is a Fintech company helping home improvement contractors grow and manage their business.
+    Their SaaS platform, www.gethearth.com, provides over 10,000 contractors the financial tools they
+    need to close more business, including financing solutions, invoicing, payment collections, insurance
+    products, all in one, modern system designed specifically for the home improvement industry.
+- name: Hello Patient
+  tier: 2
+  stage: unknown
+  website: https://www.hellopatient.com/
+  domain: hellopatient.com
+  company_linkedin: https://www.linkedin.com/company/hello-patient/about/
+  blurb: Hello Patient streamlines patient communication and scheduling for healthcare practices.
+    Its conversational AI platform automates appointment scheduling, reminders, patient inquiries,
+    and outbound engagement across voice, text, and chat.
+- name: Hill House
+  tier: 2
+  stage: Series B
+  website: https://www.hillhousehome.com/
+  domain: hillhousehome.com
+  company_linkedin: https://www.linkedin.com/company/hill-house-homeinc/
+  blurb: Hill House Home is a digital-first lifestyle brand that brings beauty and joy to everyday
+    rituals. Since launching with bedding in 2016, Hill House Home has extended its collections to
+    offer bath, baby, accessories and apparel, including their widely beloved Nap DressTM.
+- name: Hive
+  tier: 2
+  stage: unknown
+  website: https://thehive.ai/
+  domain: thehive.ai
+  company_linkedin: https://www.linkedin.com/company/hiveai/mycompany/
+  blurb: Hive is the leading provider of cloud-based enterprise AI solutions, helping companies use
+    AI to interpret video, image, audio, and text. The company offers end-to-end AI services, including
+    pre-trained AI models served via API and a suite of enterprise applications.
+- name: Hopscotch
+  tier: 2
+  stage: Series B
+  website: https://www.hellohopscotch.com/
+  domain: hellohopscotch.com
+  company_linkedin: https://www.linkedin.com/company/hopscotch-healthcare/
+  blurb: At Hopscotch, they believe great healthcare should be accessible to all people across all
+    communities. They are on a mission to transform healthcare for rural communities across the country,
+    one at a time, through advanced primary care bringing the support that providers deserve and the
+    care that patients need.
+- name: Illumio
+  tier: 2
+  stage: unknown
+  website: https://www.illumio.com/
+  domain: illumio.com
+  company_linkedin: https://www.linkedin.com/company/illumio
+  blurb: Illumio, the pioneer and market leader of Zero Trust segmentation, prevents breaches from
+    becoming cyber disasters. Illumio protects critical applications and valuable digital assets with
+    proven segmentation technology purpose-built for the Zero Trust security model.
+- name: Indigov
+  tier: 2
+  stage: unknown
+  website: https://indigov.com/
+  domain: indigov.com
+  company_linkedin: https://www.linkedin.com/company/indigovern/
+  blurb: Indigov is a group of technologists working to bridge the gap between Silicon Valley and
+    Capitol Hill.
+- name: Infra
+  tier: 2
+  stage: unknown
+  website: https://infrahq.com/
+  domain: infrahq.com
+  company_linkedin: https://www.linkedin.com/company/infrahq/about/
+  blurb: Modern infrastructure access
+- name: Joby
+  tier: 2
+  stage: unknown
+  website: https://www.jobyaviation.com/
+  domain: jobyaviation.com
+  company_linkedin: https://www.linkedin.com/company/jobyaviation
+  blurb: Joby spent more than a decade developing and testing an all-electric aircraft that will help
+    achieve their vision of saving a billion people an hour every day, while helping to protect our
+    precious planet.
+- name: Kos
+  tier: 2
+  stage: unknown
+  website: https://www.kos.ai/
+  domain: kos.ai
+  blurb: The world’s first virtual finance employee. Built for the operators at the center of America's
+    industrial renewal.
+- name: Latent Labs
+  tier: 2
+  stage: unknown
+  blurb: Latent Labs is making biology programmable to transform health and sustainability for the
+    benefit of all.
+- name: Latus Bio
+  tier: 2
+  stage: unknown
+  blurb: The next chapter in AAV gene therapy
+- name: Lightbeam.AI
+  tier: 2
+  stage: unknown
+  website: https://www.lightbeam.ai/
+  domain: lightbeam.ai
+  company_linkedin: https://www.linkedin.com/company/lightbeamai
+  blurb: A pioneer in the data privacy automation (DPA) category, LightBeam is on a mission to empower
+    organizations to manage and access their sensitive data securely.
+- name: Lighten
+  tier: 2
+  stage: unknown
+  website: https://www.lighten-ai.com/
+  domain: lighten-ai.com
+  company_linkedin: https://www.linkedin.com/company/lighten-ai/
+  blurb: Lighten is on a mission to reimagine the value of healthcare data to improve patient outcomes.
+    We develop proprietary AI-enabled deep technology to accelerate clinical evidence generation.
+- name: Loop
+  tier: 2
+  stage: Series B
+  website: https://www.loop.us/
+  domain: loop.us
+  blurb: Loop's mission is to simplify logistics payments.
+- name: Luminate
+  tier: 2
+  stage: unknown
+  website: https://www.luminatemed.com/
+  domain: luminatemed.com
+  company_linkedin: https://www.linkedin.com/company/luminate-medical/
+  blurb: 'Luminate is building an ecosystem of services and technologies designed to enable patients
+    to receive cancer treatment at home. From the beginning, our vision has been clear: to help people
+    live through and after cancer, not just survive.'
+- name: Luna
+  tier: 2
+  stage: unknown
+  website: http://getluna.com/
+  domain: getluna.com
+  company_linkedin: https://www.linkedin.com/company/getluna/
+  blurb: Luna is the leading in-home physical therapy platform, offering 1:1 personalized care at
+    home that is covered by insurance.
+- name: Mammoth Biosciences
+  tier: 2
+  stage: unknown
+  website: https://mammoth.bio/about/
+  domain: mammoth.bio
+  company_linkedin: https://www.linkedin.com/company/mammothbio
+  blurb: Mammoth Biosciences is harnessing the diversity of nature to power the next-generation of
+    CRISPR products. Through the discovery and development of novel CRISPR systems, the company is
+    enabling the full potential of its platform to improve lives by reading and writing the code of
+    life.
+- name: Materialize
+  tier: 2
+  stage: unknown
+  website: https://materialize.com/
+  domain: materialize.com
+  company_linkedin: https://www.linkedin.com/company/materializeinc/
+  blurb: Materialize is a streaming SQL database company that makes it easy for developers to understand
+    streaming data, answer complex questions, and build intelligent applications using standard technology.
+- name: Mendra
+  tier: 2
+  stage: unknown
+  website: https://www.mendra.com/
+  domain: mendra.com
+  company_linkedin: https://www.linkedin.com/company/mendrainc/
+  blurb: Therapeutics for Rare Disease Enabled by AI
+- name: MeritFirst
+  tier: 2
+  stage: unknown
+  website: https://www.meritfirst.us/
+  domain: meritfirst.us
+  company_linkedin: https://www.linkedin.com/company/meritfirst/
+- name: Mindbloom
+  tier: 2
+  stage: Series B
+  website: https://www.mindbloom.com/
+  domain: mindbloom.com
+  company_linkedin: https://www.linkedin.com/company/mymindbloom/
+  blurb: Mindbloom is a mental health and wellbeing brand helping people achieve personal and clinical
+    breakthroughs with at-home, clinician-prescribed psychedelic therapies.
+- name: Model Medicines
+  tier: 2
+  stage: unknown
+  website: https://www.modelmedicines.com/
+  domain: modelmedicines.com
+  company_linkedin: https://www.linkedin.com/company/modelmedicines/
+  blurb: Model Medicines is an AI-driven, human health company using AI to model all of chemistry
+    and human biology, to accelerate the creation of life-changing drugs.
+- name: NewLimit
+  tier: 2
+  stage: unknown
+  website: https://www.newlimit.com/
+  domain: newlimit.com
+  company_linkedin: https://www.linkedin.com/company/newlimit/
+  blurb: NewLimit is a biotechnology company working to extend human healthspan by developing epigenetic
+    reprogramming therapies.
+- name: Nimbus Health
+  tier: 2
+  stage: unknown
+  website: https://www.nimbushealth.com/
+  domain: nimbushealth.com
+  blurb: Nimbus Health is a network of technology-enabled pulmonary clinics redefining the standard
+    of care for chronic respiratory disease patients across the country.
+- name: Nylas
+  tier: 2
+  stage: unknown
+  website: https://www.nylas.com/
+  domain: nylas.com
+  company_linkedin: https://www.linkedin.com/company/nylas/
+  blurb: Developers around the world use Nylas to quickly and securely build email, scheduling, and
+    work automation features into their applications.
+- name: Octant
+  tier: 2
+  stage: Series B
+  website: https://www.octant.bio/
+  domain: octant.bio
+  company_linkedin: https://www.linkedin.com/company/octantbio/
+  blurb: Octant is a well-backed team of experienced scientists and entrepreneurs exploring new frontiers
+    of biology. Octant is applying next-generation DNA sequencing, gene synthesis, and gene editing
+    to revolutionize drug discovery in a quest for safer, more effective, and cheaper drugs.
+- name: Oculus
+  tier: 2
+  stage: unknown
+  website: https://www.oculus.com/
+  domain: oculus.com
+  company_linkedin: https://www.linkedin.com/company/oculus-vr
+  blurb: The Oculus team at Facebook lets people experience anything, anywhere, with anyone through
+    world-class VR hardware and software. With global departments dedicated to VR research, computer
+    vision, haptics, social interaction, and more, Oculus is committed to driving the state of the
+    art forward through relentless innovation.
+- name: Orchestra
+  tier: 2
+  stage: unknown
+  website: https://orchestra.bio/
+  domain: orchestra.bio
+  blurb: Orchestra helps R&D organizations reduce the operational complexity of drug development
+- name: Oscar
+  tier: 2
+  stage: unknown
+  website: https://www.hioscar.com/
+  domain: hioscar.com
+  company_linkedin: https://www.linkedin.com/company/oscar-health/
+  blurb: Health care is broken; we're trying to fix it. The Oscar team is focused on utilizing technology,
+    design and data to humanize health care. They're a group of technology and health care professionals
+    who looked at the current state of the US health care system, got frustrated by the horrible consumer
+    experience, and decided to do something big about it.
+- name: Our Place
+  tier: 2
+  stage: unknown
+  website: http://fromourplace.com/
+  domain: fromourplace.com
+  company_linkedin: https://www.linkedin.com/company/fromourplace/about/
+  blurb: At Our Place, they believe in the power of home-cooking to bring people together. Their mission
+    is to create products and experiences that celebrate cultures, honor traditions, and cultivate
+    connections.
+- name: Outset
+  tier: 2
+  stage: unknown
+  website: https://outset.ai/
+  domain: outset.ai
+  company_linkedin: https://www.linkedin.com/company/outset-ai/
+  blurb: Outset is the most advanced AI-moderated research platform for running high-quality qualitative
+    research at scale.
+- name: Overland AI
+  tier: 2
+  stage: unknown
+  website: https://www.overland.ai/
+  domain: overland.ai
+  company_linkedin: https://www.linkedin.com/company/overland-ai/
+  blurb: Never risk a human life for a job a robot can do. Overland AI's tech saves lives and amplifies
+    power—minimizing risk to human life while transforming operators into force multipliers on the
+    modern battlefield.‍
+- name: PointOne
+  tier: 2
+  stage: unknown
+  website: https://pointone.com/
+  domain: pointone.com
+  company_linkedin: https://www.linkedin.com/company/pointoneai/
+  blurb: PointOne transforms timekeeping from an active burden into a passive process — capturing
+    work as it happens and converting it into compliant, ready-to-bill narratives.
+- name: Polly
+  tier: 2
+  stage: Series B
+  website: https://polly.io/
+  domain: polly.io
+  company_linkedin: https://www.linkedin.com/company/pollyex
+  blurb: Polly is transforming the mortgage industry with its modern, data-driven capital markets
+    ecosystem that includes an advanced Product & Pricing Engine (PPE), Loan Trading Exchange, Analytics
+    Platform, and Partner Platform.
+- name: Promise
+  tier: 2
+  stage: unknown
+  website: https://www.promise-pay.com/
+  domain: promise-pay.com
+  company_linkedin: https://www.linkedin.com/company/joinpromise/
+  blurb: Promise helps reduce delinquencies and increase revenue while helping people pay off debt
+    sooner and with fewer penalties. Their intuitive approach to zero interest installment plans and
+    relief distribution leads to increased enrollment and a 95%+ recovery rate on scheduled payments.
+- name: Qualia
+  tier: 2
+  stage: unknown
+  website: https://www.qualia.com/
+  domain: qualia.com
+  company_linkedin: https://www.linkedin.com/company/qualiasoftware/
+  blurb: Qualia is a new class of real estate and mortgage technology that makes buying and selling
+    a home a quick, easy, and understandable process. Over half a million real estate and mortgage
+    professionals use Qualia to power their real estate closings, and Qualia currently process transactions
+    for millions of consumers every year.
+- name: Quince
+  tier: 2
+  stage: unknown
+  website: https://www.quince.com/
+  domain: quince.com
+  company_linkedin: https://www.linkedin.com/company/onequince/
+  blurb: Quince is a consumer technology platform rebuilding retail from the infrastructure up. Through
+    its proprietary Manufacturer-to-Consumer (M2C) operating system, the company integrates AI–driven
+    demand forecasting, real-time production planning, and direct factory partnerships to align supply
+    precisely with customer demand, removing the layers of markup, inventory risk, and inefficiency…
+- name: Rainbow
+  tier: 2
+  stage: unknown
+  website: https://www.userainbow.com/
+  domain: userainbow.com
+  company_linkedin: https://www.linkedin.com/company/userainbow/
+  blurb: Rainbow is a specialty lines Managing General Underwriter built on modern technology and
+    focused on small commercial insurance. The company’s customer-centric approach delivers superior
+    loss performance and rewards business owners for putting safety first.
+- name: RelateIQ
+  tier: 2
+  stage: unknown
+  website: https://essentials.salesforce.com/
+  domain: essentials.salesforce.com
+  blurb: SalesforceIQ powers sales teams with Relationship Intelligence technology. We’re building
+    the next generation of intelligent software to transform the way teams work through data-driven
+    insights.
+- name: Reserv
+  tier: 2
+  stage: unknown
+  website: https://www.reserv.com/
+  domain: reserv.com
+  company_linkedin: https://www.linkedin.com/company/reserv-ai/
+  blurb: Reserv leverages modern systems and creates new cutting-edge solutions to optimize any P&C
+    claim. From complex data ingestion to automated coverage decisioning to dynamic customer experiences,
+    Reserv is building the claims experience of the future.
+- name: Saris
+  tier: 2
+  stage: unknown
+  website: https://www.saris.ai/
+  domain: saris.ai
+- name: Sequence Holdings
+  tier: 2
+  stage: unknown
+  website: https://seqholdings.com/
+  domain: seqholdings.com
+  company_linkedin: https://www.linkedin.com/company/sequenceholdings/
+  blurb: Sequence Holdings is a permanent holding company that brings AI and engineering to the core
+    of great American businesses.
+- name: Sesh
+  tier: 2
+  stage: unknown
+  website: https://seshproducts.com/
+  domain: seshproducts.com
+  company_linkedin: https://www.linkedin.com/company/sesh-products/
+  blurb: Sesh was created to find solutions for a world without cigarettes or vapes. We were tired
+    of trying other alternatives that either didn't work or were dissatisfying. We constantly strive
+    for new, harm reducing alternatives that improve adult tobacco and vape users lives.
+- name: Sirona
+  tier: 2
+  stage: Series B
+  website: https://sironamedical.com/
+  domain: sironamedical.com
+  company_linkedin: https://www.linkedin.com/company/sironamedical/
+  blurb: Sirona Medical Inc. is addressing the needs of today’s radiology practices with a novel cloud-native
+    platform that unifies radiology IT applications – worklist, viewer, reporter, and AI – onto a
+    single, streamlined Workspace. Sirona’s radiology operating system (RadOS) puts radiologists in
+    the driver’s seat with AI-powered solutions that simplify their workflow and amplify their work
+    product.
+- name: Sonoma Biotherapeutics
+  tier: 2
+  stage: Series B
+  website: https://www.sonomabio.com/
+  domain: sonomabio.com
+  company_linkedin: https://www.linkedin.com/company/sonoma-biotherapeutics/
+  blurb: Sonoma Biotherapeutics is inventing the future of living therapies for autoimmune disease
+    — safe, effective treatments as unique as each individual patient. Regulatory T cell therapies
+    that harness a patient’s own immune cells, powerful next generation gene editing techniques and
+    advanced manufacturing and quality assurance processes.
+- name: Spotnana
+  tier: 2
+  stage: unknown
+  website: https://www.spotnana.com/
+  domain: spotnana.com
+  company_linkedin: https://www.linkedin.com/company/spotnanatechnology/
+  blurb: Spotnana powers unparalleled global travel experiences. They are rebuilding the infrastructure
+    of the travel industry in order to bring freedom, simplicity, and trust to travelers everywhere.
+- name: Stack Health
+  tier: 2
+  stage: unknown
+  website: https://www.stackhealthcare.com/
+  domain: stackhealthcare.com
+  company_linkedin: https://www.linkedin.com/company/stack-health-inc/
+  blurb: Stack Health builds personalized health plans to accelerate the transition to healthcare
+    being owned by individuals.
+- name: Structify
+  tier: 2
+  stage: unknown
+  website: https://www.structify.ai/
+  domain: structify.ai
+  company_linkedin: https://www.linkedin.com/company/structifyai/
+  blurb: Structify is an organization that converts data into structured datasets that are tailored
+    to individual needs.
+- name: Tasca Therapeutics
+  tier: 2
+  stage: unknown
+  blurb: By harnessing the power of mass spectrometry-based proteomics to identify cancer-causing
+    proteins that undergo a specific post-translational modification called auto-palmitoylation, Tasca
+    is uniquely positioned to utilize previously unknown binding pockets to develop novel therapies
+    for difficult-to-treat cancers.
+- name: Terminal
+  tier: 2
+  stage: unknown
+  website: https://terminal.io/
+  domain: terminal.io
+  company_linkedin: https://www.linkedin.com/company/jointerminal
+  blurb: Terminal builds elite engineering teams to accelerate world-changing companies. Terminal
+    identifies emerging tech hubs around the globe, and connect the top engineers with the most compelling
+    companies. They provide complete operations and services to give companies all the benefits of
+    a new office without any of the hassle.
+- name: Terminal Logistics
+  tier: 2
+  stage: unknown
+  website: https://www.terminal-industries.com/
+  domain: terminal-industries.com
+  company_linkedin: https://www.linkedin.com/company/terminal-industries/
+  blurb: Terminal helps logistics operators create a more efficient and resilient supply chain, ensuring
+    that goods move safely, consistently, and predictably.
+- name: Terra Industries
+  tier: 2
+  stage: unknown
+  website: https://www.terraindustries.co/
+  domain: terraindustries.co
+  company_linkedin: https://www.linkedin.com/company/terrahaptix/
+- name: Thorin
+  tier: 2
+  stage: unknown
+  website: https://www.thorin.com/
+  domain: thorin.com
+  company_linkedin: https://www.linkedin.com/company/thorin/
+  blurb: Thorin builds advanced AI tools for the world's most productive entrepreneurs and businesses.
+- name: TUL
+  tier: 2
+  stage: Series B
+  website: https://tul.com.co/
+  domain: tul.com.co
+  company_linkedin: https://co.linkedin.com/company/soytul
+  blurb: La mano derecha del ferretero. Somos la SuperApp del sector ferretero, la industria y la
+    construcción en Latam. Encuentra fácil y rápido los materiales de construcción y ferretería que
+    tu negocio necesita. ¡Descarga nuestra APP ahora!
+- name: Twingate
+  tier: 2
+  stage: Series B
+  website: https://www.twingate.com/
+  domain: twingate.com
+  company_linkedin: https://www.linkedin.com/company/twingate
+  blurb: Twingate provides a simple, modern approach to securing online work. Twingate enables organizations
+    to rapidly implement a modern zero trust network that is more secure and maintainable than VPNs.
+- name: Unlearn
+  tier: 2
+  stage: Series B
+  website: https://www.unlearn.ai/
+  domain: unlearn.ai
+  company_linkedin: https://www.linkedin.com/company/unlearn-ai/
+  blurb: Unlearn is the only company using AI to create Digital Twins to populate Intelligent Control
+    Arms in clinical studies. By leveraging historical datasets and disease-specific machine-learning
+    models, Unlearn generates virtual placebo patients, created from actual patient baseline data
+    in clinical studies.
+- name: Vals AI
+  tier: 2
+  stage: unknown
+  website: https://www.vals.ai/home
+  domain: vals.ai
+  company_linkedin: https://www.linkedin.com/company/vals-ai/
+  blurb: Vals AI is an independent platform committed to advancing the future of Gen AI through unbiased
+    benchmarks and scalable evaluation infrastructure for labs and engineering teams.
+- name: Waabi
+  tier: 2
+  stage: unknown
+  website: https://waabi.ai/
+  domain: waabi.ai
+  company_linkedin: https://www.linkedin.com/company/waabi/
+  blurb: Waabi, founded by AI pioneer and visionary Raquel Urtasun, is an AI company building the
+    next generation of self-driving technology. With a world class team and an innovative approach
+    that unleashes the power of AI to “drive” safely in the real world, Waabi is bringing the promise
+    of self-driving closer to commercialization than ever before.
+- name: Wish
+  tier: 2
+  stage: unknown
+  website: https://www.wish.com/
+  domain: wish.com
+  company_linkedin: https://www.linkedin.com/company/wishshopping
+  blurb: Wish is a mobile e-commerce platform that connects millions of consumers with the widest
+    selection of products delivered directly to their doors. Their mission is to provide everyone
+    access to the most affordable and convenient shopping experience on the planet.‍
+- name: Wispr Flow
+  tier: 2
+  stage: unknown
+  website: https://www.flowvoice.ai/
+  domain: flowvoice.ai
+  company_linkedin: https://www.linkedin.com/company/wispr/
+  blurb: Wispr is reinventing personal computing for an AI-first world with neural interfaces. The
+    company’s human-centered approach lets users interact with technology in a more natural way.
+- name: WithCoverage
+  tier: 2
+  stage: unknown
+  website: https://withcoverage.com/
+  domain: withcoverage.com
+  company_linkedin: https://www.linkedin.com/company/withcoverage/
+  blurb: 'The insurance brokerage industry is ready for a new standard: ambitious businesses often
+    overpay for insurance, are inadequately protected, and are left with a non-transparent, disorganized
+    experience. Most businesses don’t have an in-house Risk Management Team. That’s where we come
+    in. WithCoverage provides ambitious businesses with a Modern Risk Management Solution.'
+- name: Worktrace AI
+  tier: 2
+  stage: unknown
+  website: https://www.worktrace.ai/
+  domain: worktrace.ai
+  company_linkedin: https://www.linkedin.com/company/worktrace-ai/
+  blurb: Worktrace AI is built by AI engineers and researchers from OpenAI, Microsoft, Google DeepMind,
+    MIT, and Meta, with a goal to enable seamless agentic transformation within enterprises.
+- name: Addepar
+  tier: 3
+  stage: Series C+
+  website: https://addepar.com/
+  domain: addepar.com
+  company_linkedin: https://www.linkedin.com/company/addepar/
+  blurb: Addepar is a software and data platform that is purpose-built for professional wealth, investment
+    and asset management firms to deliver outstanding results for their clients. More than 700 leading
+    firms trust Addepar to unlock the power and possibility of more informed, data-driven investing
+    and advice.
+- name: Alloy Therapeutics
+  tier: 3
+  stage: Series C+
+  website: https://www.alloytx.com/
+  domain: alloytx.com
+  company_linkedin: https://www.linkedin.com/company/alloy-therapeutics-inc
+  blurb: Alloy Therapeutics is a biotechnology ecosystem company empowering the global scientific
+    community to make better medicines together. Through a community of partners, Alloy Therapeutics
+    democratize access to tools, technologies, services, and company creation capabilities that are
+    foundational for discovering and developing therapeutic biologics.
+- name: Anduril
+  tier: 3
+  stage: Series C+
+  website: https://www.anduril.com/
+  domain: anduril.com
+  company_linkedin: https://www.linkedin.com/company/andurilindustries
+  blurb: Anduril is not a traditional defense contractor. They are shaping the future of defense,
+    transforming US & allied military capabilities with advanced technology. They emphasize speed
+    and results and control their products from start to finish, including funding R&D to selling
+    finished products off the shelf.
+- name: Blink Health
+  tier: 3
+  stage: Series C+
+  website: https://www.blinkhealth.com/
+  domain: blinkhealth.com
+  company_linkedin: https://www.linkedin.com/company/blink-health/
+  blurb: Blink Health is the digital health company on a mission to make prescriptions more affordable
+    and accessible for everyone. Blink Health’s technology platform enables patients to access lower
+    prices and better experiences on their prescriptions.
+- name: BlueVoyant
+  tier: 3
+  stage: Series C+
+  website: https://www.bluevoyant.com/
+  domain: bluevoyant.com
+  company_linkedin: https://www.linkedin.com/company/bluevoyant/
+  blurb: At BlueVoyant, they recognize that effective cyber security requires active prevention and
+    defense across both your organization and supply chain. BlueVoyant's proprietary data, analytics
+    and technology, coupled with deep expertise, works as a force multiplier to secure your full ecosystem.
+- name: Cellares
+  tier: 3
+  stage: Series C+
+  website: https://www.cellares.com/
+  domain: cellares.com
+  company_linkedin: https://www.linkedin.com/company/cellares-corporation/
+  blurb: Cellares is revolutionizing cell therapy manufacturing. They are developing a one-of-a-kind
+    solution, The Cell Shuttle, to overcome the challenges associated with manufacturing so these
+    life-saving therapies are affordable and widely available to patients who can benefit.
+- name: Cityblock
+  tier: 3
+  stage: Series C+
+  website: https://www.cityblock.com/
+  domain: cityblock.com
+  company_linkedin: https://www.linkedin.com/company/cityblock-health
+  blurb: Cityblock was founded in 2017 as the first tech-driven provider for communities with complex
+    needs. Cityblock delivers better care to where it’s needed most, investing upstream in highly
+    personalized, prevention-oriented health and social care to ultimately drive down costs and improve
+    outcomes.
+- name: Commure
+  tier: 3
+  stage: Series C+
+  website: https://www.commure.com/
+  domain: commure.com
+  company_linkedin: https://www.linkedin.com/company/commure/
+  blurb: Commure is mending fragmentation by uniting innovators across the health ecosystem to transform
+    care with consumer-centric, data-driven digital and physical health at scale.‍
+- name: Epirus
+  tier: 3
+  stage: Series C+
+  website: https://www.epirusinc.com/
+  domain: epirusinc.com
+  company_linkedin: https://www.linkedin.com/company/epirus/
+  blurb: Epirus is a high-growth technology company developing solid-state, software-defined directed
+    energy systems that enable unprecedented counter-electronics effects and power management solutions
+    to optimize power efficiency in defense and commercial applications. With a constant emphasis
+    on innovation, they are redefining the future of power to bring tomorrow’s capabilities to life,
+    today.
+- name: Flexport
+  tier: 3
+  stage: Series C+
+  website: https://www.flexport.com/
+  domain: flexport.com
+  company_linkedin: https://www.linkedin.com/company/flexport/
+  blurb: Flexport is building the platform for global logistics—empowering buyers, sellers and their
+    logistics partners with the technology and services to grow and innovate.
+- name: Flywheel
+  tier: 3
+  stage: Series C+
+  website: https://flywheel.io/
+  domain: flywheel.io
+  company_linkedin: https://www.linkedin.com/company/6599200/
+  blurb: Flywheel is the revolutionary research data management platform powering healthcare innovation
+    by accelerating collaboration, enabling machine learning, and streamlining the massive task of
+    data aggregation, curation, and management.
+- name: Galileo
+  tier: 3
+  stage: Series C+
+  website: https://galileohealth.com/
+  domain: galileohealth.com
+  company_linkedin: https://www.linkedin.com/company/galileohealth/
+  blurb: Galileo's mission is to make healthcare more effective and affordable for all, including
+    the underserved, and they're developing technology to push the boundaries even further.
+- name: Honor
+  tier: 3
+  stage: Series C+
+  website: https://www.joinhonor.com/
+  domain: joinhonor.com
+  company_linkedin: https://www.linkedin.com/company/joinhonor
+  blurb: Honor is changing the way we care for our parents. Founded in 2014, the San Francisco–based
+    company brings workforce management and technology expertise together with high-touch, personalized
+    care to improve the in-home care experience.
+- name: Kojo
+  tier: 3
+  stage: Series C+
+  website: https://www.usekojo.com/
+  domain: usekojo.com
+  company_linkedin: https://www.linkedin.com/company/kojotechnologies/
+  blurb: Kojo (formerly Agora Systems) is the leading materials procurement platform for trade and
+    self-perform general contractors. By connecting office teams, field crews, the warehouse, and
+    vendors on one all-inclusive procurement platform, contractors control their procurement process
+    from takeoff to closeout, saving on material costs, reducing waste, and increasing productivity.
+- name: Nile
+  tier: 3
+  stage: Series C+
+  website: https://nilesecure.com/
+  domain: nilesecure.com
+  company_linkedin: https://www.linkedin.com/company/nilesecure/
+  blurb: Nile is the first to guarantee secure connectivity. Co-Founders John Chambers and Pankaj
+    Patel with a team of powerful engineers reimagined the enterprise network to be delivered entirely
+    as-a-Service (aaS) including the extensive use of monitoring, analytics, and automation to fundamentally
+    change how networks are deployed, secured, and maintained.
+- name: Orca Bio
+  tier: 3
+  stage: Series C+
+  website: https://orcabio.com/
+  domain: orcabio.com
+  company_linkedin: https://www.linkedin.com/company/orcabio
+  blurb: Orca Bio is a clinical-stage biotechnology company developing a pipeline of high precision
+    allogeneic cell therapy products that are designed to safely replace patients’ diseased blood
+    and immune system with a healthy one.
+- name: Outrider
+  tier: 3
+  stage: Series C+
+  website: https://www.outrider.ai/
+  domain: outrider.ai
+  company_linkedin: https://www.linkedin.com/company/outridertech/
+  blurb: Outrider, the pioneer in autonomous yard operations for logistics hubs, helps large enterprises
+    improve safety and increase efficiency. The only company exclusively focused on automating all
+    aspects of yard operations, Outrider eliminates manual tasks that are hazardous and repetitive.
+- name: PathAI
+  tier: 3
+  stage: Series C+
+  website: https://www.pathai.com/
+  domain: pathai.com
+  company_linkedin: https://www.linkedin.com/company/pathai
+  blurb: PathAI's mission is to improve patient outcomes with AI-powered pathology. Their platform
+    promises substantial improvements to the accuracy of diagnosis and the efficacy of treatment of
+    diseases like cancer, leveraging modern approaches in machine learning.
+- name: Platform Science
+  tier: 3
+  stage: Series C+
+  website: https://www.platformscience.com/
+  domain: platformscience.com
+  company_linkedin: https://www.linkedin.com/company/platform-science
+  blurb: Since 2015, Platform Science has connected fleets across the nation with the tools they need
+    to take control of their technology. As part of their ongoing mission to transform transportation,
+    Platform Science made it easy for fleets to develop, deploy, and manage their commercial vehicles’
+    mobile devices and applications on a single platform.
+- name: Project44
+  tier: 3
+  stage: Series C+
+  website: https://www.project44.com/
+  domain: project44.com
+  company_linkedin: https://www.linkedin.com/company/project-44/
+  blurb: project44 is on a mission - to make supply chains work. They optimize the movement of products
+    globally, delivering better resiliency, sustainability, and value for their customers.
+- name: Ramp
+  tier: 3
+  stage: Growth
+  website: https://ramp.com/
+  domain: ramp.com
+  company_linkedin: https://www.linkedin.com/company/ramp/
+  blurb: The ultimate platform for modern finance teams.
+- name: Resilience
+  tier: 3
+  stage: Series C+
+  website: https://resilience.com/
+  domain: resilience.com
+  company_linkedin: https://www.linkedin.com/company/weareresilience/
+  blurb: Resilience (National Resilience, Inc.) is a first-of-its-kind manufacturing and technology
+    company dedicated to broadening access to complex medicines and protecting biopharmaceutical supply
+    chains against disruption.
+- name: Saronic
+  tier: 3
+  stage: Series C+
+  website: https://www.saronic.com/
+  domain: saronic.com
+  company_linkedin: https://www.linkedin.com/company/saronic-technologies/
+  blurb: Saronic is building cutting-edge unmanned surface vehicles that enable maritime security
+    and domain awareness by combining best-in-class hardware, software and artificial intelligence
+    into one scalable, fully integrated platform.
+- name: SILA Nanotechnologies
+  tier: 3
+  stage: Series C+
+  website: https://www.silanano.com/
+  domain: silanano.com
+  company_linkedin: https://www.linkedin.com/company/sila-nanotechnologies-inc-
+  blurb: Sila is a next generation battery materials company dedicated to accelerating energy transformation
+    for a more sustainable future.
+- name: Socotra
+  tier: 3
+  stage: Series C+
+  website: https://www.socotra.com/
+  domain: socotra.com
+  company_linkedin: https://www.linkedin.com/company/socotra/
+  blurb: Socotra is focused on delivering agility to the trillion-dollar global insurance industry.
+    Socotra works with global insurers to modernize their technology, making it easier for them to
+    focus on creating innovative products to grow their business.
+- name: The Boring Company
+  tier: 3
+  stage: Series C+
+  website: https://www.boringcompany.com/
+  domain: boringcompany.com
+  company_linkedin: https://www.linkedin.com/company/tbc-theboringcompany/
+  blurb: To solve the problem of soul-destroying traffic, roads must go 3D, which means either flying
+    cars or tunnels. Unlike flying cars, tunnels are weatherproof, out of sight and won't fall on
+    your head. A large network of tunnels many levels deep would fix congestion in any city, no matter
+    how large it grew (just keep adding levels).
+- name: Trackonomy
+  tier: 3
+  stage: Series C+
+  website: https://trackonomysystems.com/
+  domain: trackonomysystems.com
+  company_linkedin: https://www.linkedin.com/company/trackonomy/
+  blurb: Whether by land, air, or sea, Trackonomy gives you true end-to-end visibility of your shipments
+    across the globe. Stay in control of supply chain logistics with item-level precision, and without
+    expensive infrastructure or workflow changes.‍
+- name: Ushur
+  tier: 3
+  stage: Series C+
+  website: https://ushur.com/
+  domain: ushur.com
+  company_linkedin: https://www.linkedin.com/company/ushur-me
+  blurb: Ushur delivers the world’s first AI-powered Customer Experience Automation™ platform that
+    has been purpose-built, from the ground up, to intelligently automate entire customer journeys,
+    end to end. Designed to deliver delightful, hyper-personalized customer experiences through rapid
+    issue resolution and unified, omnichannel engagement, Ushur is the first-of-its-kind system of
+    intelligence.
+- name: Vercel
+  tier: 3
+  stage: Series C+
+  website: https://vercel.com/
+  domain: vercel.com
+  company_linkedin: https://www.linkedin.com/company/vercel/
+  blurb: Vercel combines the best developer experience with an obsessive focus on end-user performance.
+    Their platform enables development teams to collaborate on and ship their best work. Vercel is
+    the creator of Next.js, the world's favorite React framework, and they're building the best tools
+    and workflow for frontend development teams.
+- name: Yugabyte
+  tier: 3
+  stage: Series C+
+  website: https://www.yugabyte.com/
+  domain: yugabyte.com
+  company_linkedin: https://www.linkedin.com/company/yugabyte
+  blurb: Yugabyte is the company behind the open source YugabyteDB, a high-performance distributed
+    SQL database for cloud native applications.Built using a unique combination of high-performance
+    document store, auto sharding, per-shard distributed consensus replication and multi-shard ACID
+    transactions (inspired by Google Spanner), YugabyteDB serves both scale-out RDBMS and internet-scale
+    OLTP workloads…

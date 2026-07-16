@@ -20,6 +20,7 @@ import httpx
 
 from ..logging_config import get_logger
 from ..models import Application, CvCacheEntry, Job, Outreach, RunRecord
+from ..networking.models import Person
 from .base import Storage, UpsertResult, chunked, suppression_matches
 
 log = get_logger(__name__)
@@ -394,6 +395,77 @@ class SupabaseStore(Storage):
             },
         )
         resp.raise_for_status()
+
+    # --- Phase 6: networking campaign people ---
+
+    def save_person(self, person: Person) -> None:
+        body = {
+            "person_id": person.person_id,
+            "campaign": person.campaign,
+            "company_name": person.company_name,
+            "company_domain": person.company_domain,
+            "company_website": person.company_website,
+            "company_linkedin": person.company_linkedin,
+            "company_blurb": person.company_blurb,
+            "tier": person.tier,
+            "name": person.name,
+            "role": person.role,
+            "linkedin_url": person.linkedin_url,
+            "email": person.email,
+            "status": person.status,
+            "status_changed_at": person.status_changed_at,
+            "draft_kind": person.draft_kind,
+            "draft_subject": person.draft_subject,
+            "draft_body": person.draft_body,
+            "used_llm": person.used_llm,
+            "updated_at": _now(),
+        }
+        # created_at defaults on insert; on conflict we merge without overwriting it.
+        resp = self.client.post(
+            f"{self.base}/people",
+            params={"on_conflict": "person_id"},
+            headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
+            json=body,
+        )
+        resp.raise_for_status()
+
+    @staticmethod
+    def _row_to_person(row: dict) -> Person:
+        return Person(
+            person_id=row["person_id"],
+            campaign=row.get("campaign") or "default",
+            company_name=row["company_name"],
+            company_domain=row.get("company_domain"),
+            company_website=row.get("company_website"),
+            company_linkedin=row.get("company_linkedin"),
+            company_blurb=row.get("company_blurb") or "",
+            tier=row.get("tier", 2),
+            name=row.get("name"),
+            role=row.get("role"),
+            linkedin_url=row.get("linkedin_url"),
+            email=row.get("email"),
+            status=row.get("status", "queued"),
+            status_changed_at=row.get("status_changed_at"),
+            draft_kind=row.get("draft_kind"),
+            draft_subject=row.get("draft_subject"),
+            draft_body=row.get("draft_body") or "",
+            used_llm=bool(row.get("used_llm")),
+        )
+
+    def get_person(self, person_id: str) -> Optional[Person]:
+        resp = self.client.get(
+            f"{self.base}/people",
+            params={"select": "*", "person_id": f"eq.{person_id}", "limit": "1"},
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        return None if not rows else self._row_to_person(rows[0])
+
+    def list_people(self, status: Optional[str] = None) -> list[Person]:
+        params = {"select": "*", "order": "tier.asc,company_name.asc,person_id.asc"}
+        if status is not None:
+            params["status"] = f"eq.{status}"
+        return [self._row_to_person(r) for r in self._get_all("people", params)]
 
     def add_suppression(self, entry: str, reason: Optional[str] = None) -> None:
         normalized = (entry or "").strip().lower()

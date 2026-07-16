@@ -25,6 +25,8 @@ validated facts (API endpoints, costs, legal guardrails) live in
 | 3 | Outreach drafting (contact lookup, grounded copy, human-gated send) | ✅ done |
 | 4 | Orchestration: dual-trigger, digest email + reply scan, alerts, keep-alive, dry-run | ✅ done |
 | 5 | Google Sheets tracker + Drive CV store, CV grouping/cache, real ATS questions, Gmail outreach drafts, slim digest | ✅ done |
+| 6a | Networking campaigns (8VC seed): LinkedIn ladder state machine, drafted connect notes/messages, Networking sheet tab, digest actions — LinkedIn always human-sent | ✅ done |
+| 6b | Networking email escalation: contact lookup, Gmail drafts, reply detection, follow-up | planned |
 
 ## Project layout
 

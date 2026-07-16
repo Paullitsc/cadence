@@ -115,3 +115,30 @@ alter table public.cv_cache add column if not exists recommended_bullets jsonb d
 -- This pipeline uses the service-role key (server-side, GitHub Actions secret),
 -- which bypasses Row Level Security. If you later expose these tables to the
 -- anon/public key, enable RLS and add explicit policies first.
+
+-- Phase 6: networking campaign people (one row per person per target company;
+-- LinkedIn ladder state machine — see networking/models.py). Re-run this file
+-- in the Supabase SQL editor to pick this up (idempotent).
+create table if not exists public.people (
+    person_id         text primary key,   -- make_person_id(campaign, company, n)
+    campaign          text not null default 'default',
+    company_name      text not null,
+    company_domain    text,
+    company_website   text,
+    company_linkedin  text,
+    company_blurb     text not null default '',
+    tier              integer not null default 2,
+    name              text,
+    role              text,
+    linkedin_url      text,
+    email             text,
+    status            text not null default 'queued',
+    status_changed_at text,               -- escalation timers measure from here
+    draft_kind        text,               -- connect | message (6b: email)
+    draft_subject     text,               -- email only (Phase 6b)
+    draft_body        text not null default '',
+    used_llm          boolean not null default false,
+    created_at        timestamptz not null default now(),
+    updated_at        timestamptz not null default now()
+);
+create index if not exists idx_people_status on public.people (status);

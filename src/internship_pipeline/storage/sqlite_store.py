@@ -17,6 +17,7 @@ from typing import Optional
 
 from ..logging_config import get_logger
 from ..models import Application, CvCacheEntry, Job, Outreach, RunRecord
+from ..networking.models import Person
 from .base import Storage, UpsertResult, chunked, suppression_matches
 
 log = get_logger(__name__)
@@ -114,6 +115,32 @@ CREATE TABLE IF NOT EXISTS cv_cache (
     recommended_bullets  TEXT,               -- JSON array of {id, text}
     created_at           TEXT NOT NULL
 );
+
+-- Phase 6: networking campaign people (one row per person per target company;
+-- LinkedIn ladder state machine — see networking/models.py).
+CREATE TABLE IF NOT EXISTS people (
+    person_id         TEXT PRIMARY KEY,   -- make_person_id(campaign, company, n)
+    campaign          TEXT NOT NULL DEFAULT 'default',
+    company_name      TEXT NOT NULL,
+    company_domain    TEXT,
+    company_website   TEXT,
+    company_linkedin  TEXT,
+    company_blurb     TEXT NOT NULL DEFAULT '',
+    tier              INTEGER NOT NULL DEFAULT 2,
+    name              TEXT,
+    role              TEXT,
+    linkedin_url      TEXT,
+    email             TEXT,
+    status            TEXT NOT NULL DEFAULT 'queued',
+    status_changed_at TEXT,               -- escalation timers measure from here
+    draft_kind        TEXT,               -- connect | message (6b: email)
+    draft_subject     TEXT,               -- email only (Phase 6b)
+    draft_body        TEXT NOT NULL DEFAULT '',
+    used_llm          INTEGER NOT NULL DEFAULT 0,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_people_status ON people (status);
 """
 
 # Columns added after a table first shipped: applied with ALTER TABLE on startup so
@@ -467,6 +494,88 @@ class SQLiteStore(Storage):
                     _now(),
                 ),
             )
+
+    # --- Phase 6: networking campaign people ---
+
+    def save_person(self, person: Person) -> None:
+        now = _now()
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT created_at FROM people WHERE person_id=?", (person.person_id,)
+            ).fetchone()
+            created = row[0] if row else now
+            conn.execute(
+                "INSERT OR REPLACE INTO people (person_id, campaign, company_name, "
+                "company_domain, company_website, company_linkedin, company_blurb, tier, "
+                "name, role, linkedin_url, email, status, status_changed_at, draft_kind, "
+                "draft_subject, draft_body, used_llm, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    person.person_id,
+                    person.campaign,
+                    person.company_name,
+                    person.company_domain,
+                    person.company_website,
+                    person.company_linkedin,
+                    person.company_blurb,
+                    person.tier,
+                    person.name,
+                    person.role,
+                    person.linkedin_url,
+                    person.email,
+                    person.status,
+                    person.status_changed_at,
+                    person.draft_kind,
+                    person.draft_subject,
+                    person.draft_body,
+                    int(person.used_llm),
+                    created,
+                    now,
+                ),
+            )
+
+    @staticmethod
+    def _row_to_person(row: sqlite3.Row) -> Person:
+        return Person(
+            person_id=row["person_id"],
+            campaign=row["campaign"],
+            company_name=row["company_name"],
+            company_domain=row["company_domain"],
+            company_website=row["company_website"],
+            company_linkedin=row["company_linkedin"],
+            company_blurb=row["company_blurb"] or "",
+            tier=row["tier"],
+            name=row["name"],
+            role=row["role"],
+            linkedin_url=row["linkedin_url"],
+            email=row["email"],
+            status=row["status"],
+            status_changed_at=row["status_changed_at"],
+            draft_kind=row["draft_kind"],
+            draft_subject=row["draft_subject"],
+            draft_body=row["draft_body"] or "",
+            used_llm=bool(row["used_llm"]),
+        )
+
+    def get_person(self, person_id: str) -> Optional[Person]:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM people WHERE person_id=?", (person_id,)
+            ).fetchone()
+        return None if row is None else self._row_to_person(row)
+
+    def list_people(self, status: Optional[str] = None) -> list[Person]:
+        with self._conn() as conn:
+            if status is None:
+                rows = conn.execute(
+                    "SELECT * FROM people ORDER BY tier, company_name, person_id"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM people WHERE status=? ORDER BY tier, company_name, person_id",
+                    (status,),
+                ).fetchall()
+        return [self._row_to_person(r) for r in rows]
 
     def add_suppression(self, entry: str, reason: Optional[str] = None) -> None:
         normalized = (entry or "").strip().lower()

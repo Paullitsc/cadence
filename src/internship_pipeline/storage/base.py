@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Optional, TypeVar
 
 from ..models import Application, CvCacheEntry, Job, Outreach, RunRecord
+from ..networking.models import Person
 
 T = TypeVar("T")
 
@@ -120,6 +121,20 @@ class Storage(ABC):
     def list_cv_cache(self) -> list[CvCacheEntry]:
         """All cached CVs — small table (one row per unique CV), scanned for
         content-identical duplicates so one rendered CV keeps one Drive link."""
+
+    # --- Phase 6: networking campaign people ---
+
+    @abstractmethod
+    def save_person(self, person: Person) -> None:
+        """Upsert a ``people`` row (keyed by ``person_id``)."""
+
+    @abstractmethod
+    def get_person(self, person_id: str) -> Optional[Person]:
+        """Load a stored networking person by id, or None if absent."""
+
+    @abstractmethod
+    def list_people(self, status: Optional[str] = None) -> list[Person]:
+        """List networking people, optionally filtered by status (tier first)."""
 
     def close(self) -> None:  # optional; overridden where a client is held open
         pass
