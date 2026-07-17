@@ -1,7 +1,7 @@
 """Offline stage-level test for Phase 2 (no network, no API key, no rendercv).
 
-Exercises match_and_slice -> prepare_applications end-to-end with the deterministic
-hashing embedder and no LLM, asserting a pending_review application is persisted.
+Exercises match_and_slice end-to-end with the deterministic hashing embedder and
+no LLM, asserting a pending_review application is persisted.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import pytest
 
 from internship_pipeline.config import Settings
 from internship_pipeline.models import Job, JobSource, StageContext
-from internship_pipeline.stages import match_and_slice, prepare_applications
+from internship_pipeline.stages import match_and_slice
 from internship_pipeline.storage import get_storage
 
 FIXTURE = str(Path(__file__).parent / "fixtures" / "master_resume_sample.yaml")
@@ -29,7 +29,7 @@ def phase2_settings(tmp_path) -> Settings:
         resume_output_dir=str(tmp_path / "resumes"),
         fit_score_threshold=0.0,       # prepare regardless of hashing similarity
         high_priority_threshold=1.1,   # nothing auto-flagged high priority
-        anthropic_api_key=None,        # no LLM -> deterministic tailoring, no answers
+        anthropic_api_key=None,        # no LLM -> deterministic tailoring
     )
 
 
@@ -50,10 +50,6 @@ def test_match_and_prepare_persist_pending_review_application(phase2_settings):
     prepared = ctx.data["prepared"]
     assert len(prepared) == 1
     assert Path(prepared[0].app.tailored_resume_path).exists()
-
-    prep_result = prepare_applications.run(ctx)
-    assert prep_result.counts["applications_ready"] == 1
-    assert prep_result.counts["answers_drafted"] == 0  # no LLM configured
 
     store = get_storage(phase2_settings)
     try:

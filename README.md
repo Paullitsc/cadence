@@ -7,10 +7,9 @@ validated facts (API endpoints, costs, legal guardrails) live in
 [`Automated Intern Recruitment Workflow.md`](./Automated%20Intern%20Recruitment%20Workflow.md)
 — that blueprint is the single source of truth.
 
-> **Status: Phase 5 — complete. All six stages are wired end-to-end.** The daily run
+> **Status: Phase 5 — complete. All stages are wired end-to-end.** The daily run
 > sources roles → scores + tailors a résumé per role (one CV per cluster of similar
-> roles) → drafts outreach for the roles worth it (dual-trigger) → drafts application
-> answers (the job's REAL form questions where Greenhouse exposes them) → syncs the
+> roles) → drafts outreach for the roles worth it (dual-trigger) → syncs the
 > **Google Sheets tracker** (rows with durable Drive CV links) → emails you a slim,
 > outreach-focused digest. Everything stays `pending_review`. Runs end-to-end with
 > **zero credentials** (deterministic fallbacks + no-op integrations) — try `--dry-run` below.
@@ -24,7 +23,7 @@ validated facts (API endpoints, costs, legal guardrails) live in
 | 2 | Résumé slicing + application drafting (embeddings, Haiku tailoring, LaTeX render) | ✅ done |
 | 3 | Outreach drafting (contact lookup, grounded copy, human-gated send) | ✅ done |
 | 4 | Orchestration: dual-trigger, digest email + reply scan, alerts, keep-alive, dry-run | ✅ done |
-| 5 | Google Sheets tracker + Drive CV store, CV grouping/cache, real ATS questions, Gmail outreach drafts, slim digest | ✅ done |
+| 5 | Google Sheets tracker + Drive CV store, CV grouping/cache, Gmail outreach drafts, slim digest | ✅ done |
 | 6a | Networking campaigns (8VC seed): LinkedIn ladder state machine, drafted connect notes/messages, Networking sheet tab, digest actions — LinkedIn always human-sent | ✅ done |
 | 6b | Networking email escalation: contact lookup, Gmail drafts, reply detection, follow-up | planned |
 
@@ -48,10 +47,9 @@ validated facts (API endpoints, costs, legal guardrails) live in
 │   ├── run_daily.py             # orchestrator entrypoint (--dry-run, --stage)
 │   ├── triggers.py              # Phase 4 dual-trigger (favorable + high-fit)
 │   ├── alerts.py                # Phase 4 failure alert (email impl, slack stub)
-│   ├── sourcing/                # companies loader, http, ATS/Simplify/JSearch fetchers,
-│   │                            #   real Greenhouse form questions (Phase 5)
+│   ├── sourcing/                # companies loader, http, ATS/Simplify/JSearch fetchers
 │   ├── resume/                  # embeddings, matching, tailoring, LaTeX render (Resume.tex
-│   │                            #   style), answers, CV grouping + cache keys (Phase 5)
+│   │                            #   style), CV grouping + cache keys (Phase 5)
 │   ├── review/                  # local CV review app (pick bullets, preview, submit)
 │   ├── outreach/                # contacts, copy, footer, suppress, gmail, replies, send,
 │   │                            #   Gmail outreach drafts (Phase 5)
@@ -60,7 +58,7 @@ validated facts (API endpoints, costs, legal guardrails) live in
 │   ├── digest/                  # jinja2 HTML digest (render + write + email)
 │   ├── fixtures/                # bundled dry-run jobs + résumé (no creds needed)
 │   └── stages/                  # source → match_and_slice → draft_outreach
-│       └── ...                  #   → prepare_applications → sync_tracker → log_and_digest
+│       └── ...                  #   → sync_tracker → log_and_digest
 └── tests/                       # unit tests + fixtures (no live APIs in tests)
 ```
 
@@ -120,10 +118,6 @@ default, `data/pipeline.db`). If Supabase creds are missing it falls back to SQL
 
 A cost guard caps LLM/render volume: every new job is scored locally, but only the
 top `MAX_APPLICATIONS_PER_RUN` (default 15) by fit get tailoring + a PDF per run.
-
-`prepare_applications()` then drafts answers to a job's **real** application-form
-questions when Greenhouse exposes them (real-data-only). Jobs with no visible
-free-text questions are skipped — no generic fallback set, no wasted LLM call.
 Everything is written to the `applications` table as `pending_review` — **nothing
 is ever auto-submitted**. High-fit or target-company roles are flagged `human_review`.
 
@@ -175,13 +169,13 @@ placeholder). Gmail is reached only after an explicit `--yes`. See `ACTIONS_FOR_
 
 ## Phase 4: how orchestration ties together
 
-`run_daily.py` runs the five stages in order, each wrapped so a failure is logged and
+`run_daily.py` runs the stages in order, each wrapped so a failure is logged and
 **skipped** (one bad stage never kills the run); counts + errors aggregate into a `runs`
 row and the run's `success`/`partial`/`failed` status. Stages are idempotent (dedupe by
 URL hash → re-runs are safe) and share state through `ctx.data`, not return values.
 
 ```
-source → match_and_slice → draft_outreach → prepare_applications → log_and_digest
+source → match_and_slice → draft_outreach → sync_tracker → log_and_digest
 ```
 
 - **Dual-trigger** (`triggers.py`). A role earns *both* a prepared application **and** a
@@ -218,8 +212,8 @@ The two human touchpoints are split by what they're *for*:
   prepared date, company, locations, a **Status dropdown**
   (`prepared → submitted → interviewing → offer → rejected → withdrawn` — the pipeline
   only ever writes `prepared`; every transition after that is yours), a **Notes** column
-  the pipeline never touches, the **CV** link (durable, in Google Drive), a link to the
-  drafted **Answers** tab, fit score, and JD keywords. Upsert is idempotent by a hidden
+  the pipeline never touches, the **CV** link (durable, in Google Drive), fit score, and
+  JD keywords. Upsert is idempotent by a hidden
   dedupe-key column, and after the initial insert the pipeline only fills cells that are
   still blank — your edits always win. Setting a row's Status to **`rejected`** or
   **`withdrawn`** are the actions the pipeline acts on: the next sync (daily, or any
@@ -239,15 +233,6 @@ The two human touchpoints are split by what they're *for*:
   one tailoring call + one render + one upload; other members' CV cells read
   `same as row N`. A persistent `cv_cache` table (keyed by selected-bullet ids +
   keyword set) reuses CVs across runs too. The digest header reports LLM calls saved.
-- **Real ATS form questions** (`sourcing/questions.py`). Where Greenhouse exposes a
-  job's actual application form (`.../jobs/{id}?questions=true` — response shape
-  verified against a live board), `prepare_applications` drafts answers to those
-  free-text questions only (selects like work authorization are never drafted —
-  they're yours). Lever/Ashby's public APIs expose no form fields (checked), so
-  those jobs are skipped — no generic fallback questions. `MAX_QUESTION_DRAFTS_PER_RUN`
-  caps LLM drafting calls (fetches are free); best-fit jobs with visible questions
-  are drafted first. Drafted answers land on the **Answers** tab (question, drafted
-  answer, and an *edited-answer column that's yours*).
 - **Outreach lands as real Gmail drafts** (`outreach/drafts.py`, flag-gated by
   `OUTREACH_GMAIL_DRAFTS_ENABLED`). Eligible drafts (verified contact, not suppressed)
   are created via the Gmail API `drafts.create` — you open Gmail, edit, and hit send.
@@ -316,7 +301,7 @@ vars. Full manual walkthrough: [`ACTIONS_FOR_PAUL.md`](./ACTIONS_FOR_PAUL.md).
 | --- | --- | --- |
 | `SUPABASE_URL`, `SUPABASE_KEY` | 1 | Supabase tracker (`STORAGE_BACKEND=supabase`); else local SQLite |
 | `RAPIDAPI_KEY` (+ `ENABLE_JSEARCH`) | 1 | JSearch tertiary source; else Simplify + ATS only |
-| `ANTHROPIC_API_KEY` | 2 | Claude résumé tailoring + answer/outreach drafting; else deterministic |
+| `ANTHROPIC_API_KEY` | 2 | Claude résumé tailoring + outreach drafting; else deterministic |
 | `TARGET_COMPANIES`, `FIT_SCORE_THRESHOLD`, `HIGH_PRIORITY_THRESHOLD` | 2/4 | matching + dual-trigger thresholds |
 | `FAVORABLE_RECENT_DAYS` | 4 | "posted recently" favorability window (dual-trigger) |
 | `ENABLE_HUNTER`+`HUNTER_API_KEY`, `ENABLE_APOLLO`+`APOLLO_API_KEY` | 3 | verified contact lookup; else free pattern-guess |
@@ -328,7 +313,6 @@ vars. Full manual walkthrough: [`ACTIONS_FOR_PAUL.md`](./ACTIONS_FOR_PAUL.md).
 | `REPLY_SCAN_DAYS`, `REPLY_SCAN_QUERY` | 4 | recruiter-reply Gmail scan window/terms |
 | `TRACKER_SHEETS_ENABLED`, `GOOGLE_SERVICE_ACCOUNT_JSON` (secret), `SHEETS_SPREADSHEET_ID`, `DRIVE_FOLDER_ID` | 5 | Google Sheets tracker + Drive CV store; unset ⇒ sync stage no-ops |
 | `CV_GROUP_SIMILARITY`, `CV_GROUP_KEYWORD_OVERLAP` | 5 | CV grouping thresholds (one tailored CV per cluster of similar JDs) |
-| `MAX_QUESTION_DRAFTS_PER_RUN` | 5 | cap on answer-drafting LLM calls per run (only jobs with visible Greenhouse questions; fetches are free) |
 | `OUTREACH_GMAIL_DRAFTS_ENABLED` | 5 | land outreach as real Gmail drafts (needs the `gmail.compose` scope — re-mint the token) |
 
 ## Scheduling (GitHub Actions)

@@ -8,7 +8,6 @@ lazy-imported so the pipeline (and the test suite) runs offline with zero creds.
 
 from __future__ import annotations
 
-from .answers import draft_common_answers
 from .embeddings import Embedder, cosine, get_embedder
 from .loader import all_bullets, load_master_resume
 from .matching import MatchResult, extract_keywords, score_job
@@ -17,7 +16,6 @@ from .render import build_cv_doc, to_yaml, write_and_render, write_and_render_on
 from .tailoring import TailorResult, tailor_resume
 
 __all__ = [
-    "draft_common_answers",
     "Embedder",
     "cosine",
     "get_embedder",

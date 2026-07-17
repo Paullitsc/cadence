@@ -30,9 +30,9 @@ real, open internships. ``max_applications_per_run`` still caps how many are
 prepared per run.
 
 Reads ``ctx.data["new_jobs"]`` (from the ``source`` stage) and hands the prepared
-applications to ``prepare_applications`` via ``ctx.data["prepared"]``. Runs fully
-offline with zero credentials (deterministic embedder + select-only tailoring +
-no-op Drive upload).
+applications to ``draft_outreach``/``sync_tracker`` via ``ctx.data["prepared"]``.
+Runs fully offline with zero credentials (deterministic embedder + select-only
+tailoring + no-op Drive upload).
 """
 
 from __future__ import annotations
@@ -417,7 +417,7 @@ def run(ctx: StageContext) -> StageResult:
         )
 
     ctx.data[DATA_PREPARED] = prepared
-    ctx.data[DATA_RESUME] = resume  # reused by prepare_applications (no reload/relog)
+    ctx.data[DATA_RESUME] = resume  # reused by draft_outreach (no reload/relog)
     ctx.data[DATA_LLM_CALLS_SAVED] = llm_calls_saved  # shown in the digest header
     counts = {
         "jobs_scored": len(jobs),

@@ -64,7 +64,7 @@ def test_save_application_upsert_preserves_created_at(tmp_path):
             "SELECT created_at FROM applications WHERE dedupe_key=?", ("abc123",)
         ).fetchone()[0]
 
-    # Re-save (e.g. prepare_applications adds answers) — created_at must be stable.
+    # Re-save (e.g. a later stage updates the row) — created_at must be stable.
     store.save_application(_app(drafted_answers={"Q": "A"}))
     with sqlite3.connect(db) as conn:
         row = conn.execute(

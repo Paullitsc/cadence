@@ -9,8 +9,7 @@
 | 1 | `source.py` | `source` | ✅ Phase 1 |
 | 2 | `match_and_slice.py` | `match_and_slice` | ⬜ stub (Phase 2) |
 | 3 | `draft_outreach.py` | `draft_outreach` | ⬜ stub (Phase 3) |
-| 4 | `prepare_applications.py` | `prepare_applications` | ⬜ stub (Phase 2–3) |
-| 5 | `log_and_digest.py` | `log_and_digest` | ✅ Phase 1 (digest to file; email in Phase 4) |
+| 4 | `log_and_digest.py` | `log_and_digest` | ✅ Phase 1 (digest to file; email in Phase 4) |
 
 `source` and `log_and_digest` are implemented; the middle three are Phase 0 stubs
 that log and return zero counts. The orchestrator catches a stage exception,

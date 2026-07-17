@@ -53,7 +53,6 @@ jobs:
       SHEETS_SPREADSHEET_ID: ${{ vars.SHEETS_SPREADSHEET_ID || '' }}
       DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID || '' }}
       CV_GROUP_SIMILARITY: ${{ vars.CV_GROUP_SIMILARITY || '0.9' }}
-      MAX_QUESTION_DRAFTS_PER_RUN: ${{ vars.MAX_QUESTION_DRAFTS_PER_RUN || '15' }}
       OUTREACH_GMAIL_DRAFTS_ENABLED: ${{ vars.OUTREACH_GMAIL_DRAFTS_ENABLED || 'false' }}
       # Service-account key. Written from a secret below (like the Gmail token); the
       # tracker sync / Drive upload no-op safely if it's unset.

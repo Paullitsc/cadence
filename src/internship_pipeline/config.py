@@ -89,7 +89,7 @@ class Settings(BaseSettings):
     # library is not installed, so the pipeline always runs offline.
     embedding_backend: Literal["sentence_transformers", "hashing"] = "sentence_transformers"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
-    # Anthropic model for tailoring/answers. Blueprint pins Haiku 4.5; kept as a
+    # Anthropic model for tailoring/outreach drafting. Blueprint pins Haiku 4.5; kept as a
     # constant so the model can be swapped without touching code. VERIFY the id in
     # the Anthropic Console if it differs (ACTIONS_FOR_PAUL.md).
     anthropic_model: str = "claude-haiku-4-5"
@@ -109,7 +109,7 @@ class Settings(BaseSettings):
     high_priority_threshold: float = 0.55  # at/above this, flag human_review
     # Cost/volume guard: prepare at most this many applications per run, BEST-fit
     # first. Scoring (embeddings, local) still covers every new job; only the top-N
-    # go through LLM tailoring + PDF render + answer/outreach drafting. Protects the
+    # go through LLM tailoring + PDF render + outreach drafting. Protects the
     # first live run (~1,200+ new jobs on day one) from an LLM/render blowout.
     max_applications_per_run: int = 40
     # Comma-separated company names that always count as high-priority (dual-trigger
@@ -212,10 +212,6 @@ class Settings(BaseSettings):
     # spreadsheet's cells needs no quota). `drive.file` (not the broader `drive` scope)
     # is enough: it grants access to every file this app itself creates.
     drive_file_scope: str = "https://www.googleapis.com/auth/drive.file"
-    # Cost cap on LLM-drafting real ATS form answers (per run). Question FETCHES are
-    # free public-API calls for every prepared Greenhouse job; only jobs with visible
-    # free-text questions are drafted, and this cap bounds that LLM spend.
-    max_question_drafts_per_run: int = 15
 
     # --- Phase 6: networking campaigns (LinkedIn-first, human-executed) ---
     # Target companies + people live in this YAML (the committed 8VC seed); missing
@@ -311,7 +307,7 @@ def build_dry_run_settings(*, work_dir: Optional[str] = None) -> Settings:
         enable_github_readme=False,
         enable_hunter=False,
         enable_apollo=False,
-        anthropic_api_key=None,  # deterministic tailoring / no answer drafting
+        anthropic_api_key=None,  # deterministic tailoring / no outreach drafting
         gmail_oauth_token_json=None,  # no send, no reply scan
         digest_email_enabled=False,
         digest_dir=str(base / "digests"),

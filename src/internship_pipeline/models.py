@@ -250,13 +250,12 @@ class StageResult:
 
 
 # ctx.data keys shared across stages (source -> match_and_slice -> draft_outreach
-# -> prepare_applications -> sync_tracker -> log_and_digest). Centralized so a
-# rename/typo is one edit instead of a silent `dict.get(..., default)` miss
-# scattered across six files.
+# -> sync_tracker -> log_and_digest). Centralized so a rename/typo is one edit
+# instead of a silent `dict.get(..., default)` miss scattered across files.
 DATA_NEW_JOBS = "new_jobs"  # source -> match_and_slice, log_and_digest
 DATA_JOBS_TOTAL = "jobs_total"  # source -> log_and_digest
-DATA_PREPARED = "prepared"  # match_and_slice -> draft_outreach, prepare_applications, sync_tracker
-DATA_RESUME = "resume"  # match_and_slice -> draft_outreach, prepare_applications (skip a reload)
+DATA_PREPARED = "prepared"  # match_and_slice -> draft_outreach, sync_tracker
+DATA_RESUME = "resume"  # match_and_slice -> draft_outreach (skip a reload)
 DATA_LLM_CALLS_SAVED = "llm_calls_saved"  # match_and_slice -> log_and_digest
 DATA_OUTREACH = "outreach"  # draft_outreach (currently unread downstream; kept for parity)
 DATA_TRACKER_ROWS_REMOVED = "tracker_rows_removed"  # sync_tracker -> log_and_digest

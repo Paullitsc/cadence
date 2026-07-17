@@ -6,6 +6,7 @@ tailoring step can reference bullets without emitting free-form text.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import yaml
@@ -14,6 +15,23 @@ from ..logging_config import get_logger
 from .models import BulletRef, MasterResume
 
 log = get_logger(__name__)
+
+
+def _stable_bullet_id(source: str, parent: str, text: str) -> str:
+    """Content-derived id: same (source, parent, text) always hashes the same.
+
+    IDs used to encode list position (``p{project_index}b{bullet_index}``), which
+    silently broke every bullet id in and after the wrong slot whenever
+    ``master_resume.yaml`` was edited (a project inserted/reordered) between when
+    an application's ``recommended_bullets`` were tailored and when it was later
+    (re-)rendered — the id still resolved to *a* bullet, just the wrong one, so a
+    stale résumé could show one project's bullet under a different project's
+    heading with no error. Hashing the content instead of the position makes an
+    id survive any edit that doesn't touch that exact bullet/parent.
+    """
+    digest = hashlib.sha256(f"{source}:{parent}:{text}".encode("utf-8")).hexdigest()[:12]
+    prefix = "e" if source == "experience" else "p"
+    return f"{prefix}{digest}"
 
 
 def load_master_resume(path: str) -> MasterResume:
@@ -41,10 +59,10 @@ def all_bullets(resume: MasterResume) -> list[BulletRef]:
     """Flatten every experience/project bullet into referenceable ``BulletRef``s."""
     refs: list[BulletRef] = []
     for ei, exp in enumerate(resume.experiences):
-        for bi, bullet in enumerate(exp.bullets):
+        for bullet in exp.bullets:
             refs.append(
                 BulletRef(
-                    id=f"e{ei}b{bi}",
+                    id=_stable_bullet_id("experience", exp.company, bullet.text),
                     text=bullet.text,
                     tags=bullet.tags,
                     metrics=bullet.metrics,
@@ -54,10 +72,10 @@ def all_bullets(resume: MasterResume) -> list[BulletRef]:
                 )
             )
     for pi, proj in enumerate(resume.projects):
-        for bi, bullet in enumerate(proj.bullets):
+        for bullet in proj.bullets:
             refs.append(
                 BulletRef(
-                    id=f"p{pi}b{bi}",
+                    id=_stable_bullet_id("project", proj.name, bullet.text),
                     text=bullet.text,
                     tags=bullet.tags,
                     metrics=bullet.metrics,

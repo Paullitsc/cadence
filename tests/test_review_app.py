@@ -10,12 +10,17 @@ import pytest
 
 from internship_pipeline.config import Settings
 from internship_pipeline.models import Application
-from internship_pipeline.resume.loader import load_master_resume
+from internship_pipeline.resume.loader import all_bullets, load_master_resume
 from internship_pipeline.review.app import ReviewApp
 from internship_pipeline.review.selection import entry_options, selection_to_bullets
 from internship_pipeline.storage import get_storage
 
 FIXTURE = str(Path(__file__).parent / "fixtures" / "master_resume_sample.yaml")
+
+# Ids are content-derived (see resume/loader.py), not positional, so tests resolve
+# the real ids from the fixture rather than hardcoding a stale "e0b0"-style format.
+_REFS = all_bullets(load_master_resume(FIXTURE))
+ID_KAFKA, ID_TESTS, ID_QUERY = (r.id for r in _REFS)
 
 
 @pytest.fixture
@@ -32,8 +37,8 @@ def _app(**overrides) -> Application:
         fit_score=0.7,
         keywords=["python", "kafka"],
         recommended_bullets=[
-            {"id": "e0b0", "text": "Built a **Kafka** data pipeline (tailored)."},
-            {"id": "p0b0", "text": "Implemented a SQL query planner in Java for a teaching database."},
+            {"id": ID_KAFKA, "text": "Built a **Kafka** data pipeline (tailored)."},
+            {"id": ID_QUERY, "text": "Implemented a SQL query planner in Java for a teaching database."},
         ],
     )
     base.update(overrides)
@@ -48,11 +53,11 @@ def test_entry_options_precheck_recommended_bullets(resume):
     assert exp.title == "Software Engineer Intern — Acme Labs"
 
     by_id = {b.id: b for e in entries for b in e.bullets}
-    assert by_id["e0b0"].recommended and by_id["p0b0"].recommended
-    assert not by_id["e0b1"].recommended
+    assert by_id[ID_KAFKA].recommended and by_id[ID_QUERY].recommended
+    assert not by_id[ID_TESTS].recommended
     # a recommended bullet shows its TAILORED text; others show the master text
-    assert by_id["e0b0"].text == "Built a **Kafka** data pipeline (tailored)."
-    assert by_id["e0b1"].text.startswith("Added integration tests")
+    assert by_id[ID_KAFKA].text == "Built a **Kafka** data pipeline (tailored)."
+    assert by_id[ID_TESTS].text.startswith("Added integration tests")
 
 
 def test_entry_options_fallback_matches_yaml_for_legacy_apps(resume):
@@ -65,24 +70,24 @@ def test_entry_options_fallback_matches_yaml_for_legacy_apps(resume):
     app = _app(recommended_bullets=[], tailored_resume_yaml=legacy_yaml)
     entries = entry_options(resume, app)
     by_id = {b.id: b for e in entries for b in e.bullets}
-    assert by_id["e0b1"].recommended  # matched by normalized text (bold stripped)
-    assert not by_id["e0b0"].recommended
+    assert by_id[ID_TESTS].recommended  # matched by normalized text (bold stripped)
+    assert not by_id[ID_KAFKA].recommended
 
 
 # --- selection_to_bullets ----------------------------------------------------------
 def test_selection_orders_recommended_first_then_added(resume):
     app = _app()
-    # Human keeps both recommendations and adds e0b1; checkbox order is arbitrary.
-    bullets = selection_to_bullets(resume, app, ["e0b1", "p0b0", "e0b0"])
-    assert [tb.ref.id for tb in bullets] == ["e0b0", "p0b0", "e0b1"]
+    # Human keeps both recommendations and adds ID_TESTS; checkbox order is arbitrary.
+    bullets = selection_to_bullets(resume, app, [ID_TESTS, ID_QUERY, ID_KAFKA])
+    assert [tb.ref.id for tb in bullets] == [ID_KAFKA, ID_QUERY, ID_TESTS]
     # recommended keep tailored text; the added one gets deterministic keyword bolding
     assert bullets[0].text == "Built a **Kafka** data pipeline (tailored)."
     assert "**Python**" in bullets[2].text
 
 
 def test_selection_ignores_unknown_and_duplicate_ids(resume):
-    bullets = selection_to_bullets(resume, _app(), ["e0b0", "e0b0", "ghost", "p0b0"])
-    assert [tb.ref.id for tb in bullets] == ["e0b0", "p0b0"]
+    bullets = selection_to_bullets(resume, _app(), [ID_KAFKA, ID_KAFKA, "ghost", ID_QUERY])
+    assert [tb.ref.id for tb in bullets] == [ID_KAFKA, ID_QUERY]
 
 
 # --- ReviewApp.submit ---------------------------------------------------------------
@@ -103,14 +108,14 @@ def review_app(tmp_path, resume):
 def test_submit_finalizes_and_marks_reviewed(review_app):
     review_app.storage.save_application(_app(status="pending_review"))
 
-    result = review_app.submit("k1", ["e0b0", "e0b1"])
+    result = review_app.submit("k1", [ID_KAFKA, ID_TESTS])
     assert result.get("ok") is True
     assert result["sheet_synced"] is False  # tracker unconfigured → daily run syncs
 
     stored = review_app.storage.get_application("k1")
     assert stored.status == "reviewed"
     assert stored.reviewed_at
-    assert [b["id"] for b in stored.final_bullets] == ["e0b0", "e0b1"]
+    assert [b["id"] for b in stored.final_bullets] == [ID_KAFKA, ID_TESTS]
     # the final artifact reflects the human's selection, not the recommendation
     assert "integration tests" in stored.tailored_resume_yaml
     assert "query planner" not in stored.tailored_resume_yaml.lower()
@@ -136,7 +141,7 @@ def test_submit_distinguishes_broken_tracker_from_unconfigured(tmp_path, resume)
     try:
         review_app = ReviewApp(settings, storage, resume)
         review_app.storage.save_application(_app(status="pending_review"))
-        result = review_app.submit("k1", ["e0b0"])
+        result = review_app.submit("k1", [ID_KAFKA])
         assert result["sheet_synced"] is False
         assert result["sheet_error"] is not None
         assert "not configured" not in result["sheet_error"]
@@ -145,14 +150,14 @@ def test_submit_distinguishes_broken_tracker_from_unconfigured(tmp_path, resume)
 
 
 def test_submit_rejects_unknown_app_and_empty_selection(review_app):
-    assert "error" in review_app.submit("nope", ["e0b0"])
+    assert "error" in review_app.submit("nope", [ID_KAFKA])
     review_app.storage.save_application(_app(status="pending_review"))
     assert "error" in review_app.submit("k1", [])
 
 
 def test_preview_renders_selection_and_reports_no_engine(review_app):
     review_app.storage.save_application(_app(status="pending_review"))
-    data = review_app.preview("k1", ["e0b0"])
+    data = review_app.preview("k1", [ID_KAFKA])
     assert data["bullets"] == 1
     assert data["pdf"] is False and data["engine"] is None  # no engine in tests
 
