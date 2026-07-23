@@ -24,7 +24,9 @@ _STATUS_COLORS: dict[str, dict[str, float]] = {
     "accepted": {"red": 0.85, "green": 0.93, "blue": 0.83},
     "connect_drafted": {"red": 0.99, "green": 0.95, "blue": 0.78},
     "message_drafted": {"red": 0.99, "green": 0.95, "blue": 0.78},
+    "email_drafted": {"red": 0.99, "green": 0.95, "blue": 0.78},
     "email_due": {"red": 0.95, "green": 0.87, "blue": 0.80},
+    "email_sent": {"red": 0.88, "green": 0.90, "blue": 0.95},
 }
 
 

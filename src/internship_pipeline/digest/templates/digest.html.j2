@@ -73,7 +73,13 @@
         {%- if a.person.role %} <span class="meta2">({{ a.person.role }})</span>{% endif %}
         {% if a.person.linkedin_url %} · <a href="{{ a.person.linkedin_url }}">profile</a>{% endif %}
         <div class="meta2">{{ a.instruction }}</div>
+        {% if a.kind == 'email' and a.person.draft_subject %}
+        <div class="meta2"><b>Subject:</b> {{ a.person.draft_subject }}</div>
+        {% endif %}
         {% if a.person.draft_body %}<pre class="draft">{{ a.person.draft_body }}</pre>{% endif %}
+        {% if a.kind == 'email' and a.person.gmail_draft_link %}
+        <a href="{{ a.person.gmail_draft_link }}">✉ edit the draft in Gmail</a>
+        {% endif %}
       </td>
     </tr>
     {% endfor %}

@@ -153,6 +153,8 @@ _MIGRATIONS: list[tuple[str, str, str]] = [
     ("outreach", "gmail_draft_id", "TEXT"),
     ("outreach", "gmail_draft_link", "TEXT"),
     ("cv_cache", "recommended_bullets", "TEXT"),
+    ("people", "gmail_draft_id", "TEXT"),
+    ("people", "gmail_draft_link", "TEXT"),
 ]
 
 
@@ -508,8 +510,9 @@ class SQLiteStore(Storage):
                 "INSERT OR REPLACE INTO people (person_id, campaign, company_name, "
                 "company_domain, company_website, company_linkedin, company_blurb, tier, "
                 "name, role, linkedin_url, email, status, status_changed_at, draft_kind, "
-                "draft_subject, draft_body, used_llm, created_at, updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "draft_subject, draft_body, used_llm, gmail_draft_id, gmail_draft_link, "
+                "created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     person.person_id,
                     person.campaign,
@@ -529,6 +532,8 @@ class SQLiteStore(Storage):
                     person.draft_subject,
                     person.draft_body,
                     int(person.used_llm),
+                    person.gmail_draft_id,
+                    person.gmail_draft_link,
                     created,
                     now,
                 ),
@@ -555,6 +560,8 @@ class SQLiteStore(Storage):
             draft_subject=row["draft_subject"],
             draft_body=row["draft_body"] or "",
             used_llm=bool(row["used_llm"]),
+            gmail_draft_id=row["gmail_draft_id"],
+            gmail_draft_link=row["gmail_draft_link"],
         )
 
     def get_person(self, person_id: str) -> Optional[Person]:

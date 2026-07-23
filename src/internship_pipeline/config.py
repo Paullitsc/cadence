@@ -226,6 +226,12 @@ class Settings(BaseSettings):
     networking_accept_window_days: int = 10
     # A sent message with no reply after this many days escalates to email_due.
     networking_reply_window_days: int = 7
+    # Phase 6b — email escalation. OFF by default → email_due stays a terminal
+    # placeholder (6a behavior). ON → a stalled LinkedIn thread gets a cold
+    # escalation email drafted; a verified (seeded) address lands it as a Gmail
+    # draft for you to send. Needs the gmail.compose scope on the OAuth token
+    # (folded into gmail_scopes below) + a CAN-SPAM physical address to send.
+    networking_email_escalation_enabled: bool = False
 
     # --- CV review app (local, human-in-the-loop CV selection) ---
     # `python -m internship_pipeline.review` serves the review UI on localhost:
@@ -267,7 +273,7 @@ class Settings(BaseSettings):
         cleanly — requesting a scope the stored token doesn't carry breaks the refresh.
         """
         scopes = [self.gmail_send_scope, self.gmail_read_scope]
-        if self.outreach_gmail_drafts_enabled:
+        if self.outreach_gmail_drafts_enabled or self.networking_email_escalation_enabled:
             scopes.append(self.gmail_compose_scope)
         if self.tracker_sheets_enabled:
             scopes.append(self.drive_file_scope)

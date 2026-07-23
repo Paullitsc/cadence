@@ -418,6 +418,8 @@ class SupabaseStore(Storage):
             "draft_subject": person.draft_subject,
             "draft_body": person.draft_body,
             "used_llm": person.used_llm,
+            "gmail_draft_id": person.gmail_draft_id,
+            "gmail_draft_link": person.gmail_draft_link,
             "updated_at": _now(),
         }
         # created_at defaults on insert; on conflict we merge without overwriting it.
@@ -450,6 +452,8 @@ class SupabaseStore(Storage):
             draft_subject=row.get("draft_subject"),
             draft_body=row.get("draft_body") or "",
             used_llm=bool(row.get("used_llm")),
+            gmail_draft_id=row.get("gmail_draft_id"),
+            gmail_draft_link=row.get("gmail_draft_link"),
         )
 
     def get_person(self, person_id: str) -> Optional[Person]:

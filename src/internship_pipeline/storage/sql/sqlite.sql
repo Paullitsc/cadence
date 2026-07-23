@@ -120,10 +120,12 @@ CREATE TABLE IF NOT EXISTS people (
     email             TEXT,
     status            TEXT NOT NULL DEFAULT 'queued',
     status_changed_at TEXT,               -- escalation timers measure from here
-    draft_kind        TEXT,               -- connect | message (6b: email)
+    draft_kind        TEXT,               -- connect | message | email (Phase 6b)
     draft_subject     TEXT,               -- email only (Phase 6b)
     draft_body        TEXT NOT NULL DEFAULT '',
     used_llm          INTEGER NOT NULL DEFAULT 0,
+    gmail_draft_id    TEXT,               -- Phase 6b: escalation email as a Gmail draft
+    gmail_draft_link  TEXT,               -- Phase 6b: deep link to that draft
     created_at        TEXT NOT NULL,
     updated_at        TEXT NOT NULL
 );

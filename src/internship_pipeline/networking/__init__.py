@@ -6,7 +6,13 @@ whole thing onto the sheet's Networking tab; the human sends everything on
 LinkedIn by hand and flips each row's Status. LinkedIn is never automated.
 """
 
-from .copy import NetworkingContent, draft_networking_copy, rank_bullets
+from .copy import (
+    NetworkingContent,
+    NetworkingEmail,
+    draft_networking_copy,
+    draft_networking_email,
+    rank_bullets,
+)
 from .models import Person, allowed_human_transition, make_person_id
 from .sequence import (
     HumanAction,
@@ -16,14 +22,22 @@ from .sequence import (
 )
 from .targets import NetworkingTarget, load_targets, seed_people
 
+# NOTE: ``networking.email`` is deliberately NOT re-exported here. It imports
+# ``storage`` (for the suppression check), and ``storage.base`` imports
+# ``networking.models`` — pulling ``.email`` into this package __init__ closes that
+# into a circular import when the process first enters through ``storage``. The one
+# caller (the stage) imports it straight from the submodule instead.
+
 __all__ = [
     "HumanAction",
     "NetworkingContent",
+    "NetworkingEmail",
     "NetworkingTarget",
     "Person",
     "allowed_human_transition",
     "awaiting_person_count",
     "draft_networking_copy",
+    "draft_networking_email",
     "load_targets",
     "make_person_id",
     "outstanding_actions",

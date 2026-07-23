@@ -16,10 +16,12 @@ from internship_pipeline.networking.models import (
     STATUS_ACCEPTED,
     STATUS_CONNECT_DRAFTED,
     STATUS_CONNECT_SENT,
+    STATUS_EMAIL_DRAFTED,
     STATUS_EMAIL_DUE,
     STATUS_MESSAGE_DRAFTED,
 )
 from internship_pipeline.networking.sequence import outstanding_actions
+from internship_pipeline.outreach.footer import OPT_OUT_MARKER
 from internship_pipeline.stages import networking
 
 RESUME_FIXTURE = str(Path(__file__).parent / "fixtures" / "master_resume_sample.yaml")
@@ -140,6 +142,47 @@ def test_stale_connect_escalates_to_email_due(stage_settings):
     jane = storage.get_person("test-alpha-robotics-1")
     assert jane.status == STATUS_EMAIL_DUE
     assert jane.draft_body == "" and jane.draft_kind is None
+
+
+def test_email_due_stays_terminal_when_escalation_disabled(stage_settings):
+    # 6a behavior preserved: with the flag off, an email_due row is never drafted.
+    ctx, _ = _run(stage_settings)
+    storage = ctx.get_storage()
+    jane = storage.get_person("test-alpha-robotics-1")
+    jane.status = STATUS_EMAIL_DUE
+    jane.status_changed_at = datetime.now(timezone.utc).isoformat()
+    storage.save_person(jane)
+
+    _, result = _run(stage_settings)
+    assert result.counts["networking_emails_drafted"] == 0
+    assert storage.get_person("test-alpha-robotics-1").status == STATUS_EMAIL_DUE
+
+
+def test_email_escalation_drafts_copy_with_footer_offline(stage_settings):
+    # Flag on but no Gmail creds: the escalation email is drafted onto the row
+    # (footer baked, subject set), but no Gmail draft is created (that waits on creds).
+    s = stage_settings.model_copy(update={
+        "networking_email_escalation_enabled": True,
+        "outreach_from_name": "Test Candidate",
+        "outreach_from_email": "candidate@example.com",
+        "outreach_physical_address": "123 Example St, Boston MA",
+    })
+    ctx, _ = _run(s)
+    storage = ctx.get_storage()
+    jane = storage.get_person("test-alpha-robotics-1")
+    jane.status = STATUS_EMAIL_DUE
+    jane.status_changed_at = datetime.now(timezone.utc).isoformat()
+    storage.save_person(jane)
+
+    _, result = _run(s)
+    assert result.counts["networking_emails_drafted"] == 1
+    assert result.counts["networking_email_drafts_created"] == 0  # Gmail not configured
+    jane = storage.get_person("test-alpha-robotics-1")
+    assert jane.status == STATUS_EMAIL_DRAFTED
+    assert jane.draft_kind == "email"
+    assert jane.draft_subject and "Alpha Robotics" in jane.draft_subject
+    assert OPT_OUT_MARKER in jane.draft_body  # CAN-SPAM footer baked in
+    assert jane.gmail_draft_id is None
 
 
 def test_sqlite_list_people_filters_and_orders(stage_settings):

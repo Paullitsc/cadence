@@ -99,7 +99,9 @@ def test_committed_8vc_seed_loads():
     assert "Anduril" in names
     assert "Palantir" not in names  # marked Exited on the live page
     assert all(t.tier in (1, 2, 3) for t in targets)
-    # Every row seeds exactly one placeholder person (no people listed yet).
+    # Each company seeds at least one row: one placeholder when no people are
+    # listed, or one row per listed person (some companies now name several), so
+    # the person count is >= the company count. Every id stays unique.
     people = seed_people(campaign, targets)
-    assert len(people) == len(targets)
+    assert len(people) >= len(targets)
     assert len({p.person_id for p in people}) == len(people)

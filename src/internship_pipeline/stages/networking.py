@@ -31,9 +31,12 @@ from datetime import datetime, timezone
 from ..logging_config import get_logger
 from ..models import StageContext, StageResult
 from ..networking import draft_networking_copy, load_targets, rank_bullets, seed_people
+from ..networking.copy import draft_networking_email
+from ..networking.email import create_networking_email_drafts
 from ..networking.models import (
     STATUS_CLOSED,
     STATUS_CONNECT_DRAFTED,
+    STATUS_EMAIL_DRAFTED,
     STATUS_EMAIL_DUE,
     STATUS_MESSAGE_DRAFTED,
     Person,
@@ -44,8 +47,10 @@ from ..networking.rows import (
     plan_closed_removals,
     plan_people_upsert,
 )
-from ..networking.sequence import DRAFT_CONNECT, MARK_EMAIL_DUE, plan_due
+from ..networking.sequence import DRAFT_CONNECT, DRAFT_EMAIL, MARK_EMAIL_DUE, plan_due
 from ..networking.sheet import NETWORKING_TAB, ensure_networking_tab
+from ..outreach.footer import build_email_body
+from ..outreach.gmail import default_draft_fn
 from ..resume import all_bullets, load_master_resume
 from ..resume.llm import build_default_complete
 from ..tracker import build_tracker_services
@@ -133,6 +138,7 @@ def run(ctx: StageContext) -> StageResult:  # noqa: PLR0915 - orchestration is l
         daily_connect_budget=s.networking_daily_connects,
         accept_window_days=s.networking_accept_window_days,
         reply_window_days=s.networking_reply_window_days,
+        email_escalation_enabled=s.networking_email_escalation_enabled,
     )
     needs_drafting = any(a.action != MARK_EMAIL_DUE for a in due)
     resume = None
@@ -149,7 +155,7 @@ def run(ctx: StageContext) -> StageResult:  # noqa: PLR0915 - orchestration is l
                 extra={"run_id": ctx.run_id},
             )
 
-    connects = messages = escalated = 0
+    connects = messages = escalated = emails = 0
     for action in due:
         person = action.person
         if action.action == MARK_EMAIL_DUE:
@@ -164,6 +170,25 @@ def run(ctx: StageContext) -> StageResult:  # noqa: PLR0915 - orchestration is l
         if resume is None:
             continue
         top = rank_bullets(resume, bullets, person)
+        if action.action == DRAFT_EMAIL:
+            email = draft_networking_email(
+                person=person, resume=resume, top_bullets=top, complete=complete
+            )
+            person.status = STATUS_EMAIL_DRAFTED
+            person.draft_kind = "email"
+            person.draft_subject = email.subject
+            # Bake the CAN-SPAM footer into the stored body now (same as Phase-3
+            # outreach) so draft_body is the exact, send-ready text; a placeholder
+            # address shows through as its own fix-me signal and the Gmail-draft
+            # step below refuses to create a draft until it's set.
+            person.draft_body = build_email_body(email.body, s)
+            person.used_llm = email.used_llm
+            person.gmail_draft_id = None
+            person.gmail_draft_link = None
+            person.status_changed_at = now_iso
+            storage.save_person(person)
+            emails += 1
+            continue
         note, message = draft_networking_copy(
             person=person, resume=resume, top_bullets=top, complete=complete
         )
@@ -181,6 +206,20 @@ def run(ctx: StageContext) -> StageResult:  # noqa: PLR0915 - orchestration is l
             messages += 1
         person.status_changed_at = now_iso
         storage.save_person(person)
+
+    # 4b) Phase 6b: land verified-address escalation emails as Gmail drafts (never
+    # sent). Off unless enabled + Gmail configured; guessed addresses stay as the
+    # drafted copy in the digest/sheet for the human to complete.
+    email_drafts_created = 0
+    if s.networking_email_escalation_enabled:
+        draft_fn = default_draft_fn(s)  # None → Gmail not configured; drafts wait
+        if draft_fn is not None:
+            email_drafted_people = [
+                p for p in by_id.values() if p.status == STATUS_EMAIL_DRAFTED
+            ]
+            email_drafts_created = create_networking_email_drafts(
+                email_drafted_people, settings=s, storage=storage, draft_fn=draft_fn
+            )
 
     # 5) Project onto the sheet: drop closed rows, then upsert the rest.
     rows_appended = cells_updated = rows_removed = 0
@@ -207,6 +246,8 @@ def run(ctx: StageContext) -> StageResult:  # noqa: PLR0915 - orchestration is l
         "networking_connects_drafted": connects,
         "networking_messages_drafted": messages,
         "networking_escalated": escalated,
+        "networking_emails_drafted": emails,
+        "networking_email_drafts_created": email_drafts_created,
         "networking_human_updates": human_updates,
         "networking_rows_appended": rows_appended,
         "networking_cells_updated": cells_updated,

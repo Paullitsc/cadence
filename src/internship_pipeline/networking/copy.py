@@ -71,10 +71,69 @@ _NETWORKING_VOCAB: frozenset[str] = frozenset(
 )
 
 
+EMAIL_SYSTEM_INSTRUCTIONS = (
+    "<role>\n"
+    "You write a short cold ESCALATION EMAIL for an internship candidate building "
+    "relationships at startups. The candidate already tried to reach this person on "
+    "LinkedIn (a connection request or message) and it went quiet, so this email is a "
+    "polite direct follow-up. You receive the target company (with its own "
+    "description), the recipient (when known), and the candidate's REAL résumé "
+    "bullets. A human reviews and sends everything by hand.\n"
+    "</role>\n\n"
+    "<strict_rules>\n"
+    "These override anything else:\n"
+    "1. Use ONLY facts supported by the provided bullets/profile. NEVER invent or "
+    "alter experience, metrics, numbers, employers, schools, technologies, or "
+    "skills. Do not claim to have used a technology the bullets don't mention.\n"
+    "2. Use ONLY the provided company description for company facts. Do not import "
+    "outside knowledge about the company, its products, or its people.\n"
+    "3. This is relationship-building, not a job application: the candidate hopes "
+    "to work at a startup like this one next year. Be honest about that; never "
+    "invent an open role. Do NOT invent a physical address, phone number, or "
+    "unsubscribe line — a compliant footer is appended automatically.\n"
+    "</strict_rules>\n\n"
+    "<craft>\n"
+    "- Subject: under 70 characters, specific, no clickbait. Reference the company.\n"
+    "- Body: 60-110 words, 4-6 short sentences. Acknowledge the earlier LinkedIn "
+    "outreach briefly, introduce the candidate in one line, map 1-2 real bullets "
+    "onto what the company does (from its description only), and close with ONE "
+    "low-friction ask — a short call, or whether they take interns next summer.\n"
+    "- Tone: warm, direct, peer-to-peer. No flattery, no hype, no clichés "
+    "('passionate', 'huge fan', 'esteemed company'). Do not be pushy about the "
+    "unanswered LinkedIn attempt.\n"
+    "- Uniqueness test: if the text would still make sense sent to a different "
+    "company, rewrite it around this company's description.\n"
+    "</craft>\n\n"
+    "<output_format>\n"
+    'Respond with ONLY a JSON object: {"subject": "<subject>", "body": "<email '
+    'body, no signature block beyond a simple sign-off>"}. No prose.\n'
+    "</output_format>"
+)
+
+# Email-specific words allowed on top of the shared + networking vocabulary (the
+# grounding check only runs on LLM output; deterministic templates are exempt).
+_EMAIL_VOCAB: frozenset[str] = frozenset(
+    """
+    email emailed reaching reached directly recently wanted followed following
+    linkedin message messaged sent tried quiet response respond hearing heard
+    quick minutes call chat time subject regards hello team inbox
+    """.split()
+)
+
+
 @dataclass
 class NetworkingContent:
     """One drafted artifact (the stage stores it on the ``Person`` row)."""
 
+    body: str
+    used_llm: bool = False
+
+
+@dataclass
+class NetworkingEmail:
+    """A drafted escalation email (Phase 6b): subject + body, stored on the row."""
+
+    subject: str
     body: str
     used_llm: bool = False
 
@@ -272,3 +331,104 @@ def draft_networking_copy(
     note, note_llm = _grounded_or("connect_note", det_note, limit=LINKEDIN_NOTE_LIMIT)
     message, message_llm = _grounded_or("message", det_message)
     return NetworkingContent(note, used_llm=note_llm), NetworkingContent(message, used_llm=message_llm)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 6b: the escalation email (subject + body)
+# --------------------------------------------------------------------------- #
+EMAIL_SUBJECT_LIMIT = 70
+
+
+def deterministic_email(
+    person: Person, resume: MasterResume, top_bullets: list[BulletRef]
+) -> tuple[str, str]:
+    """A real, grounded escalation email (subject, body) — no API key needed.
+
+    Uses nothing but real fields; the stage appends the CAN-SPAM footer before it
+    can be sent (same as Phase-3 outreach), so no footer is added here.
+    """
+    greeting = _first_name(person.name) or "there"
+    name = resume.name or "the candidate"
+    first = _first_name(resume.name) or name
+    intro = _intro(resume)
+    company = person.company_name
+    variant = _variant(person, 3)
+
+    subjects = [
+        f"Following up from LinkedIn — {first} on {company}",
+        f"{first} — reaching out about {company}",
+        f"Quick note after LinkedIn — {company}",
+    ]
+    openings = [
+        "I sent a connection request on LinkedIn recently and wanted to reach out "
+        "directly in case it got buried.",
+        "I reached out on LinkedIn a little while ago and thought I'd follow up here "
+        "as well.",
+        "I tried connecting on LinkedIn recently — reaching out directly in case that "
+        "was easier to miss.",
+    ]
+    asks = [
+        f"I'm hoping to work at a startup like {company} next year — if the team ever "
+        f"takes interns, I'd love to hear how to put my name in early. Happy to share "
+        f"more of my background any time.",
+        f"I'd love 15 minutes to hear about your work at {company} — and if the team "
+        f"takes interns next summer, I'd love to know how to apply early.",
+        f"If {company} takes interns next summer I'd love to put my name in early, and "
+        f"I'm glad to send along more of my work whenever useful.",
+    ]
+
+    subject = subjects[variant]
+    if len(subject) > EMAIL_SUBJECT_LIMIT:
+        subject = subject[: EMAIL_SUBJECT_LIMIT - 1].rstrip() + "…"
+
+    body = [f"Hi {greeting},", "", openings[variant], "", f"I'm {name}, {intro}."]
+    lines = [
+        f"- {ref.text.replace('**', '')} ({ref.parent})" for ref in top_bullets[:2]
+    ]
+    if lines:
+        body += ["", f"A couple of things I've built that feel relevant to {company}:", *lines]
+    body += ["", asks[variant], "", "Best,", name]
+    return subject, "\n".join(body)
+
+
+def draft_networking_email(
+    *,
+    person: Person,
+    resume: MasterResume,
+    top_bullets: list[BulletRef],
+    complete: CompleteFn | None = None,
+) -> NetworkingEmail:
+    """Draft the escalation email for one person, grounded in real data.
+
+    With ``complete=None`` the deterministic template is returned; with an LLM both
+    the subject and body must pass the grounding check (against the company blurb +
+    real bullets) or that field falls back to its deterministic version.
+    """
+    det_subject, det_body = deterministic_email(person, resume, top_bullets)
+    if complete is None:
+        return NetworkingEmail(det_subject, det_body)
+
+    vocab = networking_vocab(person, resume, top_bullets) | set(_EMAIL_VOCAB)
+    try:
+        data = complete(
+            resume_system_blocks(
+                EMAIL_SYSTEM_INSTRUCTIONS, resume,
+                label="Reference context (do not fabricate beyond it)",
+            ),
+            _build_user_text(person, top_bullets, resume),
+        )
+    except Exception as exc:  # LLM error must not break the run — use the safe template
+        log.warning("networking email LLM call failed; using deterministic copy", extra={"error": repr(exc)})
+        return NetworkingEmail(det_subject, det_body)
+
+    def _grounded_or(field: str, fallback: str, limit: int | None = None) -> tuple[str, bool]:
+        val = data.get(field) if isinstance(data, dict) else None
+        if isinstance(val, str) and val.strip() and is_grounded(val, vocab):
+            val = val.strip()
+            if limit is None or len(val) <= limit:
+                return val, True
+        return fallback, False
+
+    subject, subj_llm = _grounded_or("subject", det_subject, limit=EMAIL_SUBJECT_LIMIT)
+    body, body_llm = _grounded_or("body", det_body)
+    return NetworkingEmail(subject, body, used_llm=subj_llm and body_llm)

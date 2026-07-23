@@ -30,7 +30,9 @@ from .models import (
     STATUS_CLOSED,
     STATUS_CONNECT_DRAFTED,
     STATUS_CONNECT_SENT,
+    STATUS_EMAIL_DRAFTED,
     STATUS_EMAIL_DUE,
+    STATUS_EMAIL_SENT,
     STATUS_MESSAGE_DRAFTED,
     STATUS_MESSAGE_SENT,
     STATUS_ORDER,
@@ -85,9 +87,15 @@ def next_step(person: Person, *, accept_window_days: int, reply_window_days: int
     if status == STATUS_MESSAGE_SENT:
         return f"Waiting for a reply — escalates {_due_date(person, reply_window_days)}."
     if status == STATUS_EMAIL_DUE:
-        return "LinkedIn went quiet — email step lands in Phase 6b; nudge manually or close."
+        return "LinkedIn went quiet — an escalation email will be drafted on the next run."
+    if status == STATUS_EMAIL_DRAFTED:
+        if person.gmail_draft_id:
+            return "You: review the escalation email in Gmail drafts → send → set Status to email_sent."
+        return "You: find the recipient's email, send the drafted escalation email → set Status to email_sent."
+    if status == STATUS_EMAIL_SENT:
+        return "Escalation email sent — waiting for a reply."
     if status == STATUS_REPLIED:
-        return "In conversation — keep it going in your LinkedIn inbox."
+        return "In conversation — keep it going in your inbox or LinkedIn."
     return ""
 
 
@@ -118,7 +126,12 @@ def _build_row(person: Person, *, accept_window_days: int, reply_window_days: in
     row[COL_NEXT_STEP] = next_step(
         person, accept_window_days=accept_window_days, reply_window_days=reply_window_days
     )
-    row[COL_DRAFT] = person.draft_body or ""
+    # For an email the subject lives in its own field; show it above the body in
+    # the single Draft cell so the whole message is copy-pasteable from one place.
+    if person.draft_kind == "email" and (person.draft_subject or "").strip():
+        row[COL_DRAFT] = f"Subject: {person.draft_subject.strip()}\n\n{person.draft_body or ''}"
+    else:
+        row[COL_DRAFT] = person.draft_body or ""
     row[COL_KEY] = person.person_id
     return row
 

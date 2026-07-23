@@ -54,6 +54,10 @@ jobs:
       DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID || '' }}
       CV_GROUP_SIMILARITY: ${{ vars.CV_GROUP_SIMILARITY || '0.9' }}
       OUTREACH_GMAIL_DRAFTS_ENABLED: ${{ vars.OUTREACH_GMAIL_DRAFTS_ENABLED || 'false' }}
+      # Phase 6b: draft the networking email escalation (Gmail drafts for verified
+      # addresses). Off by default → email_due stays a placeholder. Needs the compose
+      # scope on the Gmail token + a real OUTREACH_PHYSICAL_ADDRESS (see below).
+      NETWORKING_EMAIL_ESCALATION_ENABLED: ${{ vars.NETWORKING_EMAIL_ESCALATION_ENABLED || 'false' }}
       # Service-account key. Written from a secret below (like the Gmail token); the
       # tracker sync / Drive upload no-op safely if it's unset.
       GOOGLE_SERVICE_ACCOUNT_JSON: google_service_account.json

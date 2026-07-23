@@ -11,7 +11,13 @@ state machine::
         -> message_sent -> replied            (success — conversation is live)
     connect_sent  --no accept in N days-->  email_due   (Phase 6b drafts the email)
     message_sent  --no reply  in N days-->  email_due
+    email_due -> email_drafted -> email_sent -> replied  (Phase 6b: the email escalation)
     any ----------------------------------> closed      (human-set, row leaves the sheet)
+
+Phase 6b (email escalation) picks up at ``email_due``: the pipeline drafts a cold
+EMAIL (not a LinkedIn note), resolves a recipient, and — for a verified address —
+lands it as a Gmail draft for the human to send. ``email_sent`` is the human's
+"I sent it" flip; a reply then closes the loop the same way the LinkedIn path does.
 
 Statuses the human may set (sheet dropdown) are ``HUMAN_SETTABLE``; the pipeline
 owns the rest. Transitions only move forward (``allowed_human_transition``), with
@@ -32,12 +38,15 @@ STATUS_ACCEPTED = "accepted"
 STATUS_MESSAGE_DRAFTED = "message_drafted"
 STATUS_MESSAGE_SENT = "message_sent"
 STATUS_EMAIL_DUE = "email_due"
+STATUS_EMAIL_DRAFTED = "email_drafted"  # Phase 6b: escalation email drafted, awaiting send
+STATUS_EMAIL_SENT = "email_sent"  # Phase 6b: the human sent the escalation email
 STATUS_REPLIED = "replied"
 STATUS_CLOSED = "closed"
 
 # Lifecycle order — the sheet dropdown shows all of them; forward-only validation
-# uses the index. email_due sits before replied so a stalled thread can still be
-# marked replied (or closed) by the human.
+# uses the index. The email-escalation states (email_due -> email_drafted ->
+# email_sent) sit before replied so a stalled thread can still be marked replied
+# (or closed) by the human at any point along the way.
 STATUS_ORDER: list[str] = [
     STATUS_QUEUED,
     STATUS_CONNECT_DRAFTED,
@@ -46,15 +55,25 @@ STATUS_ORDER: list[str] = [
     STATUS_MESSAGE_DRAFTED,
     STATUS_MESSAGE_SENT,
     STATUS_EMAIL_DUE,
+    STATUS_EMAIL_DRAFTED,
+    STATUS_EMAIL_SENT,
     STATUS_REPLIED,
     STATUS_CLOSED,
 ]
 _ORDER_INDEX = {s: i for i, s in enumerate(STATUS_ORDER)}
 
 # What the human may set from the sheet. Everything else is pipeline-owned; an
-# out-of-band value in the Status cell is reverted on the next sync.
+# out-of-band value in the Status cell is reverted on the next sync. ``email_sent``
+# is the human's "I sent the escalation email" flip (Phase 6b).
 HUMAN_SETTABLE: frozenset[str] = frozenset(
-    {STATUS_CONNECT_SENT, STATUS_ACCEPTED, STATUS_MESSAGE_SENT, STATUS_REPLIED, STATUS_CLOSED}
+    {
+        STATUS_CONNECT_SENT,
+        STATUS_ACCEPTED,
+        STATUS_MESSAGE_SENT,
+        STATUS_EMAIL_SENT,
+        STATUS_REPLIED,
+        STATUS_CLOSED,
+    }
 )
 
 # No timers run past these; ``closed`` rows are also removed from the sheet.
@@ -120,10 +139,16 @@ class Person(BaseModel):
     status_changed_at: Optional[str] = None  # ISO; escalation timers measure from here
 
     # The current artifact awaiting the human (one at a time by design).
-    draft_kind: Optional[str] = None  # "connect" | "message" (Phase 6b adds "email")
+    draft_kind: Optional[str] = None  # "connect" | "message" | "email" (Phase 6b)
     draft_subject: Optional[str] = None  # email only (Phase 6b)
     draft_body: str = ""
     used_llm: bool = False
+
+    # Phase 6b: when the escalation email is a verified address it lands as a real
+    # Gmail draft (never sent); these hold the created draft so re-runs don't
+    # duplicate it and the digest can deep-link to it.
+    gmail_draft_id: Optional[str] = None
+    gmail_draft_link: Optional[str] = None
 
     def has_identity(self) -> bool:
         """True once there is someone to actually contact."""

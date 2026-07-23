@@ -49,6 +49,16 @@ companies:
   blurb: AgVend is the leading provider of digital engagement software to serve the producer of tomorrow.
     Their white-labeled information and commerce portals are designed to strengthen the relationship
     between the ag distribution channel and their grower-customers.
+  people:
+    - name: Amritpal Saini
+      role: Senior Data Analyst
+      linkedin: https://www.linkedin.com/in/amritpal-saini-7b02021a2/
+    - name: Kirill Kostiukhin
+      role: Senior Software Engineer
+      linkedin: https://www.linkedin.com/in/kostyukhin/
+    - name: Dmitry Gavrilenko
+      role: Software Engineer
+      linkedin: https://www.linkedin.com/in/dmitry-gavrilenko-19ab13100/
 - name: Alloy
   tier: 1
   stage: Series A
@@ -59,6 +69,19 @@ companies:
     silos within and across supply chain, sales and marketing teams. Alloy's cloud platform couples
     end-to-end inventory and shipment visibility with sell-in and sell-through analytics to surface
     relevant insights in real-time.
+  people:
+    - name: Devin McGuire
+      role: Data Engineer
+      linkedin: https://www.linkedin.com/in/dmcguire12/
+    - name: Ryan Devenish
+      role: Head of Product
+      linkedin: https://www.linkedin.com/in/ryandevenish/
+    - name: Joel Beal
+      role: CEO & Co-Founder
+      linkedin: https://www.linkedin.com/in/joelcbeal/
+    - name: Lasse Holmstedt
+      role: CTO
+      linkedin: https://www.linkedin.com/in/holmstedt/
 - name: Cambium
   tier: 1
   stage: Series A
@@ -88,6 +111,19 @@ companies:
   blurb: Cellanome is an integrative multi-omics platform that measures biology in an unprecedented
     resolution and scale using proprietary technology. It engages in cutting-edge synthetic biology
     and informatics methods.
+  people:
+    - name: Juan E. 
+      role: Senior Staff Engineer
+      linkedin: https://www.linkedin.com/in/juan-e-894428328/
+    - name: Matthew Hart
+      role: Staff Integration Engineer
+      linkedin: https://www.linkedin.com/in/matthew-hart-a4074391/
+    - name: Tarun Khurana
+      role: Co-Founder, CTO, Head of Research and Technology Development
+      linkedin: https://www.linkedin.com/in/tarun-khurana-8642a07/
+    - name: Sean Hajizadeh
+      role: Senior Directory of Cloud Services
+      linkedin: https://www.linkedin.com/in/sean-hajizadeh-8708034/
 - name: Cellino Bio
   tier: 1
   stage: Series A

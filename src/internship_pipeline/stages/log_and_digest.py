@@ -101,7 +101,9 @@ def run(ctx: StageContext) -> StageResult:
     # storage (not ctx.data) so the digest is complete even when this stage runs
     # standalone. Best-effort like every other section.
     networking_people = _safe(lambda: storage.list_people(), [], ctx, "networking people")
-    networking_actions = outstanding_actions(networking_people)
+    networking_actions = outstanding_actions(
+        networking_people, email_escalation_enabled=s.networking_email_escalation_enabled
+    )
 
     # Track the outreach lifecycle: a reply from a contact we emailed moves the
     # row sent -> replied (a storage write, not an outbound action).
