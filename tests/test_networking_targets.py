@@ -5,12 +5,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from internship_pipeline.networking.models import (
     allowed_human_transition,
     make_person_id,
 )
 from internship_pipeline.networking.targets import load_targets, seed_people
 
+# The real roster is git-ignored (public repo, real people's names — CI
+# materializes it from the NETWORKING_TARGETS_YAML secret), so the shape checks
+# run against a committed fixture and the real file is exercised only locally.
+SAMPLE_TARGETS = Path(__file__).parent / "fixtures" / "networking_targets_sample.yaml"
 REPO_TARGETS = Path(__file__).parent.parent / "networking_targets.yaml"
 
 
@@ -91,17 +97,34 @@ companies:
     assert jane.company_blurb == "Builds robots."
 
 
-def test_committed_8vc_seed_loads():
-    campaign, targets = load_targets(REPO_TARGETS)
+def _assert_roster_shape(path):
+    campaign, targets = load_targets(path)
+    assert campaign
+    assert all(t.tier in (1, 2, 3) for t in targets)
+    # Each company seeds at least one row: one placeholder when no people are
+    # listed, or one row per listed person (some companies name several), so the
+    # person count is >= the company count. Every id stays unique.
+    people = seed_people(campaign, targets)
+    assert len(people) >= len(targets)
+    assert len({p.person_id for p in people}) == len(people)
+    return campaign, targets, people
+
+
+def test_sample_roster_loads():
+    campaign, targets, people = _assert_roster_shape(SAMPLE_TARGETS)
+    assert campaign == "fixture"
+    assert {t.name for t in targets} >= {"Northwind Robotics", "Placeholder Only Co"}
+    by_id = {p.person_id: p for p in people}
+    assert by_id["fixture-northwind-robotics-1"].name == "Jane Doe"
+    # A company with nobody listed still gets exactly one placeholder row.
+    assert by_id["fixture-placeholder-only-co-1"].has_identity() is False
+
+
+@pytest.mark.skipif(not REPO_TARGETS.exists(), reason="private roster not present")
+def test_real_8vc_roster_loads():
+    campaign, targets, _ = _assert_roster_shape(REPO_TARGETS)
     assert campaign == "8vc"
     assert len(targets) > 100  # the full portfolio, minus exited companies
     names = {t.name for t in targets}
     assert "Anduril" in names
     assert "Palantir" not in names  # marked Exited on the live page
-    assert all(t.tier in (1, 2, 3) for t in targets)
-    # Each company seeds at least one row: one placeholder when no people are
-    # listed, or one row per listed person (some companies now name several), so
-    # the person count is >= the company count. Every id stays unique.
-    people = seed_people(campaign, targets)
-    assert len(people) >= len(targets)
-    assert len({p.person_id for p in people}) == len(people)

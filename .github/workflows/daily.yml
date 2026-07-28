@@ -8,12 +8,8 @@ on:
     - cron: "0 13 * * *"
   workflow_dispatch: {}        # allow manual runs from the Actions tab
 
-# `write` (not `read`) so the networking stage's roster writeback can be committed
-# back — see the "Commit networking roster" step. Runners are ephemeral, so
-# without that commit a person you name on the sheet's Networking tab would be
-# folded into networking_targets.yaml and then thrown away with the runner.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: daily-sourcing
@@ -141,6 +137,21 @@ jobs:
       # checkout never contains it — without this step every scheduled run silently
       # skipped matching/tailoring/outreach ("master résumé not found"). The secret
       # holds the full contents of master_resume.yaml.
+      # Materialize the networking roster from a secret. It carries real people's
+      # names and LinkedIn URLs and this repo is PUBLIC, so — like the master
+      # résumé — it is git-ignored and never present in the checkout. Unset means
+      # no file, and the networking stage logs one line and no-ops.
+      - name: Write networking roster
+        env:
+          NETWORKING_TARGETS_YAML: ${{ secrets.NETWORKING_TARGETS_YAML }}
+        run: |
+          if [ -n "$NETWORKING_TARGETS_YAML" ]; then
+            printf '%s' "$NETWORKING_TARGETS_YAML" > networking_targets.yaml
+            echo "roster materialized ($(wc -c < networking_targets.yaml) bytes)"
+          else
+            echo "::warning title=No networking roster::NETWORKING_TARGETS_YAML secret unset — the networking stage will no-op."
+          fi
+
       - name: Write master résumé
         env:
           MASTER_RESUME_YAML: ${{ secrets.MASTER_RESUME_YAML }}
@@ -153,32 +164,29 @@ jobs:
           fi
 
       - name: Run daily pipeline
-        run: uv run python -m internship_pipeline.run_daily
-
-      # The Networking tab and networking_targets.yaml are two views of the same
-      # roster (networking/merge.py). When the human names someone on the sheet,
-      # the stage folds them into the file — which only survives the ephemeral
-      # runner if it is committed. Nothing changed on an ordinary day, so this is
-      # usually a no-op. Best-effort: a lost race here just means the file catches
-      # up tomorrow, while storage and the sheet already agree.
-      #
-      # NOTE: this repo is PUBLIC and the roster holds real people's names and
-      # LinkedIn URLs. That is already true of the committed seed — but it means
-      # anything typed into the Person/Role/LinkedIn cells becomes public. Keep
-      # notes and anything sensitive in the Notes column, which is never read.
-      - name: Commit networking roster
-        continue-on-error: true
         run: |
-          if git diff --quiet -- networking_targets.yaml; then
+          cp -f networking_targets.yaml /tmp/roster-before.yaml 2>/dev/null || true
+          uv run python -m internship_pipeline.run_daily
+
+      # The Networking tab and networking_targets.yaml are two views of one roster
+      # (networking/merge.py), so naming someone on the sheet rewrites the file.
+      # The file is NOT tracked (it holds real people's names and this repo is
+      # public — see .gitignore), so that rewrite dies with the ephemeral runner
+      # and cannot be committed back. Nothing is lost: Supabase and the sheet are
+      # the durable record. This just tells Paul his local copy has fallen behind.
+      # The message deliberately carries no names — Actions logs are public here.
+      - name: Flag roster drift
+        if: always()
+        run: |
+          if [ -f networking_targets.yaml ] \
+             && ! cmp -s networking_targets.yaml /tmp/roster-before.yaml; then
+            echo "::notice title=Networking roster changed::A person named on the \
+          sheet was folded into networking_targets.yaml, which this runner discards. \
+          Run 'make roster-sync' locally, then 'make roster-push' to refresh the \
+          NETWORKING_TARGETS_YAML secret."
+          else
             echo "roster unchanged"
-            exit 0
           fi
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add networking_targets.yaml
-          git commit -m "chore(networking): sync roster from the sheet [skip ci]"
-          git pull --rebase --autostash origin main
-          git push origin HEAD:main
 
       # NOTE: the digest used to be uploaded as a build artifact here. This repo is
       # PUBLIC and artifacts are downloadable by anyone — once the pipeline prepares

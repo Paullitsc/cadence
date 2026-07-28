@@ -12,13 +12,21 @@ dist/
 
 # Env / secrets
 .env
+.env.*
+!.env.example
 *.local
-# Gmail OAuth (Phase 3): client-secrets + minted token — never commit these
-data/*token*.json
-data/*credentials*.json
+# Gmail OAuth (Phase 3): client-secrets + minted token. Unanchored on purpose —
+# daily.yml materializes gmail_token.json at the repo ROOT, not under data/.
+*token*.json
+*credentials*.json
 # Google service-account key (Phase 5 tracker) — never commit it
 *service_account*.json
 cadence-*.json
+# Belt-and-braces: any key material, wherever it lands.
+*.pem
+*.p12
+*.pfx
+*.key
 
 # Data / runtime artifacts
 data/*.db
@@ -34,6 +42,16 @@ rendercv_output/
 /Paul_CV.yaml
 /Resume.tex
 *_CV.yaml
+*_cv.yaml
+/*.pdf
+/*.docx
+
+# Networking roster — real third-party names + LinkedIn URLs. The repo is public,
+# so this is materialized in CI from the NETWORKING_TARGETS_YAML secret instead of
+# being tracked (same pattern as master_resume.yaml). Your local copy is the
+# master: edit it, then `make roster-push` to refresh the secret.
+# NOTE: versions committed before 2026-07-28 remain in this repo's git history.
+/networking_targets.yaml
 
 # OS / editor
 .DS_Store

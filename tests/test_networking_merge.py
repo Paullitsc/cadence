@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from internship_pipeline.networking.merge import merge_identity
 from internship_pipeline.networking.models import Person
 from internship_pipeline.networking.targets import (
@@ -19,6 +21,9 @@ from internship_pipeline.networking.targets import (
     write_targets,
 )
 
+# The real roster is git-ignored (public repo, real people's names — it is
+# materialized in CI from a secret), so the committed fixture is what CI checks.
+SAMPLE_TARGETS = Path(__file__).parent / "fixtures" / "networking_targets_sample.yaml"
 REPO_TARGETS = Path(__file__).parent.parent / "networking_targets.yaml"
 
 TARGETS_YAML = """\
@@ -177,18 +182,28 @@ def test_unchanged_roster_is_not_rewritten(tmp_path):
     assert path.stat().st_mtime_ns == before
 
 
-def test_committed_8vc_seed_round_trips_byte_for_byte(tmp_path):
-    """The real roster must survive a writeback untouched.
+def _assert_round_trips(source: Path, tmp_path):
+    copy = tmp_path / "networking_targets.yaml"
+    copy.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    campaign, targets = load_targets(copy)
+    assert write_targets(copy, campaign, targets) is False  # nothing to rewrite
+    assert copy.read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
+
+
+def test_sample_roster_round_trips_byte_for_byte(tmp_path):
+    """A roster must survive a writeback untouched.
 
     Guards the dump width and the header split: if either drifts, an ordinary
-    one-person change would reflow all ~1500 lines and the CI writeback commit
-    would bury it. Keep the committed file in this canonical form.
+    one-person change would reflow the whole file and bury the real diff. The
+    fixture's blurbs are long enough to wrap, which is what pins the width.
     """
-    copy = tmp_path / "networking_targets.yaml"
-    copy.write_text(REPO_TARGETS.read_text(encoding="utf-8"), encoding="utf-8")
-    campaign, targets = load_targets(copy)
-    assert write_targets(copy, campaign, targets) is False
-    assert copy.read_text(encoding="utf-8") == REPO_TARGETS.read_text(encoding="utf-8")
+    _assert_round_trips(SAMPLE_TARGETS, tmp_path)
+
+
+@pytest.mark.skipif(not REPO_TARGETS.exists(), reason="private roster not present")
+def test_real_roster_round_trips_byte_for_byte(tmp_path):
+    """Same check against Paul's real (git-ignored) roster when it is available."""
+    _assert_round_trips(REPO_TARGETS, tmp_path)
 
 
 def test_dump_keeps_the_files_key_order(tmp_path):

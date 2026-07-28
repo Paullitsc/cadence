@@ -1,0 +1,42 @@
+# Fixture roster (fake companies/people) mirroring the shape of the real, private
+# networking_targets.yaml. Its long blurbs are what pin PyYAML's wrap width in
+# test_networking_merge.py — the real file is git-ignored (public repo, real
+# names), so this stands in for it. Keep it in the canonical dump layout.
+#
+# Schema: see networking/targets.py.
+
+campaign: fixture
+companies:
+- name: Northwind Robotics
+  tier: 1
+  stage: Series A
+  website: https://northwind.example
+  domain: northwind.example
+  company_linkedin: https://www.linkedin.com/company/northwind-robotics
+  blurb: Northwind Robotics builds autonomous material-handling systems for high-throughput warehouses,
+    pairing a fleet-scheduling planner with onboard perception so a single operator can supervise
+    hundreds of machines across several sites at once.
+  people:
+  - name: Jane Doe
+    role: CTO
+    linkedin: https://www.linkedin.com/in/jane-doe-fixture/
+  - name: Sam Lee
+    role: Staff Software Engineer
+    linkedin: https://www.linkedin.com/in/sam-lee-fixture/
+- name: Harborline Health
+  tier: 2
+  stage: Series B
+  website: https://harborline.example
+  domain: harborline.example
+  blurb: Harborline Health operates a network of technology-enabled clinics that fold remote monitoring,
+    pharmacy, and care coordination into one record, so a patient's whole history follows them between
+    visits instead of being rebuilt each time.
+- name: Quietfield
+  tier: 3
+  stage: Growth
+  website: https://quietfield.example
+  domain: quietfield.example
+  company_linkedin: https://www.linkedin.com/company/quietfield
+  blurb: Quietfield is a developer-tools company.
+- name: Placeholder Only Co
+  tier: 2
