@@ -26,6 +26,7 @@ validated facts (API endpoints, costs, legal guardrails) live in
 | 5 | Google Sheets tracker + Drive CV store, CV grouping/cache, Gmail outreach drafts, slim digest | ✅ done |
 | 6a | Networking campaigns (8VC seed): LinkedIn ladder state machine, drafted connect notes/messages, Networking sheet tab, digest actions — LinkedIn always human-sent | ✅ done |
 | 6b | Networking email escalation: stalled LinkedIn threads → grounded cold email, pattern-guess recipient, verified-address Gmail drafts (CAN-SPAM gated), email_drafted/email_sent states — opt-in, human-sent | ✅ done |
+| 6c | Two-way roster sync: `networking_targets.yaml` ↔ the Networking tab (edit either side), file writeback committed by the daily workflow | ✅ done |
 
 ## Project layout
 

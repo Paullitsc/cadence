@@ -1,13 +1,22 @@
-"""Load ``networking_targets.yaml`` into typed targets and seed ``Person`` rows.
+"""Load ``networking_targets.yaml`` into typed targets, seed ``Person`` rows, and
+write the file back.
 
 Schema is documented in the header of ``networking_targets.yaml`` itself (the
 committed 8VC seed). Mirrors ``sourcing/companies.py``: malformed rows are
 skipped with a log line rather than crashing the run, and a missing file means
 the whole phase quietly no-ops — the pipeline must run with zero setup.
+
+The file is also a WRITE target: when the human names a person on the sheet's
+Networking tab, ``write_targets`` folds that back into the roster so the git
+copy stays the durable record (see ``networking/merge.py`` for who wins). The
+round-trip deliberately preserves the schema-doc comment block at the top of the
+file — everything above the first ``campaign:`` line is copied through verbatim,
+since PyYAML cannot carry comments.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -19,11 +28,22 @@ from .models import Person, make_person_id
 
 log = get_logger(__name__)
 
+# PyYAML re-wraps long scalars, so the dump width decides whether a writeback
+# shows a real diff or reflows every blurb in the file. 96 reproduces the
+# committed 8VC seed's wrapping exactly (verified against it) — keep it in sync
+# with the file if it is ever regenerated at another width.
+_DUMP_WIDTH = 96
+
+_CAMPAIGN_LINE = re.compile(r"^campaign:", flags=re.MULTILINE)
+
 
 class TargetPerson(BaseModel):
     """One person listed under a company in the targets file."""
 
-    name: str
+    # Empty is allowed: a row the human identified on the sheet by LinkedIn URL
+    # alone still has to round-trip into the file, and dropping the entry would
+    # shift every later person's positional id (see ``make_person_id``).
+    name: str = ""
     role: Optional[str] = None
     linkedin: Optional[str] = None
     email: Optional[str] = None
@@ -86,6 +106,62 @@ def load_targets(path: str | Path) -> tuple[str, list[NetworkingTarget]]:
         extra={"path": str(p), "campaign": campaign, "companies": len(targets)},
     )
     return campaign, targets
+
+
+def _person_to_dict(tp: TargetPerson) -> dict:
+    row: dict = {"name": tp.name}
+    for key, value in (("role", tp.role), ("linkedin", tp.linkedin), ("email", tp.email)):
+        if value:
+            row[key] = value
+    return row
+
+
+def _target_to_dict(target: NetworkingTarget) -> dict:
+    """One company as the file spells it — declaration key order, no empty keys."""
+    row: dict = {"name": target.name, "tier": target.tier}
+    for key, value in (
+        ("stage", target.stage),
+        ("website", target.website),
+        ("domain", target.domain),
+        ("company_linkedin", target.company_linkedin),
+        ("blurb", target.blurb),
+    ):
+        if value:
+            row[key] = value
+    if target.people:
+        row["people"] = [_person_to_dict(p) for p in target.people]
+    return row
+
+
+def dump_targets(campaign: str, targets: list[NetworkingTarget], *, header: str = "") -> str:
+    """Serialize back to the file's own YAML dialect, ``header`` copied through."""
+    body = yaml.safe_dump(
+        {"campaign": campaign, "companies": [_target_to_dict(t) for t in targets]},
+        sort_keys=False,
+        allow_unicode=True,
+        width=_DUMP_WIDTH,
+        default_flow_style=False,
+    )
+    return f"{header}{body}"
+
+
+def write_targets(path: str | Path, campaign: str, targets: list[NetworkingTarget]) -> bool:
+    """Rewrite the targets file from ``targets``; return True if it changed on disk.
+
+    The schema-doc comment block above ``campaign:`` is preserved. A byte-identical
+    result is not written at all, so an unchanged roster never dirties the working
+    tree (which is what keeps the CI writeback commit quiet on ordinary days).
+    """
+    p = Path(path)
+    existing = p.read_text(encoding="utf-8") if p.exists() else ""
+    match = _CAMPAIGN_LINE.search(existing)
+    header = existing[: match.start()] if match else ""
+    updated = dump_targets(campaign, targets, header=header)
+    if updated == existing:
+        return False
+    p.write_text(updated, encoding="utf-8")
+    log.info("wrote networking targets file", extra={"path": str(p), "companies": len(targets)})
+    return True
 
 
 def seed_people(campaign: str, targets: list[NetworkingTarget]) -> list[Person]:

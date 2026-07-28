@@ -75,11 +75,25 @@ def test_existing_row_fills_blanks_and_refreshes_pipeline_cells_only():
     assert all(u.col != 8 for u in plan.updates)
 
 
-def test_existing_nonblank_identity_cells_are_never_overwritten():
-    existing = [HEADERS, _row("x-1", status="queued", name="Human Choice")]
-    p = person("x-1", name="Yaml Name")
+def test_identity_cells_are_refreshed_from_storage():
+    # Storage has already absorbed any sheet edit by the time the plan is built,
+    # so a disagreement here means the value changed on the OTHER side (a name
+    # corrected in networking_targets.yaml) and must reach the sheet.
+    existing = [HEADERS, _row("x-1", status="queued", name="Stale Name")]
+    p = person("x-1", name="Corrected Name")
     plan = _plan(existing, [p])
-    assert all(u.col != COL_PERSON for u in plan.updates)
+    assert [(u.col, u.value) for u in plan.updates if u.col == COL_PERSON] == [
+        (COL_PERSON, "Corrected Name")
+    ]
+
+
+def test_company_cell_is_only_ever_filled_while_blank():
+    # Company is a =HYPERLINK() formula that reads back as its display text —
+    # comparing it would queue a rewrite of every row on every single sync.
+    existing = [HEADERS, _row("x-1", status="queued")]
+    existing[1][0] = "Acme"
+    plan = _plan(existing, [person("x-1", name="Jane")])
+    assert all(u.col != 0 for u in plan.updates)
 
 
 def test_matching_sheet_needs_no_updates():
@@ -116,12 +130,13 @@ def test_parse_and_merge_absorbs_human_edits():
     p2 = person("x-2", status="queued")
     changed = apply_sheet_edits([p1, p2], edits, now_iso=NOW_ISO)
 
-    assert p1 in changed
+    # The changed FIELDS are reported, not just the people — merge_identity needs
+    # them to decide who wins against networking_targets.yaml.
+    assert changed == {"x-1": {"status", "name", "linkedin_url"}}
     assert p1.status == "connect_sent"  # valid forward move absorbed
     assert p1.status_changed_at == NOW_ISO  # timer restamped from the human's action
     assert p1.name == "Jane Doe" and p1.linkedin_url == "https://li/in/jane"
 
-    assert p2 not in changed
     assert p2.status == "queued"  # invalid edit ignored (and later rewritten on the sheet)
 
 
@@ -129,5 +144,5 @@ def test_merge_blank_cells_never_clear_stored_values():
     existing = [HEADERS, _row("x-1", status="connect_sent")]  # Person cell blank
     p = person("x-1", name="Stored Name", status="connect_sent")
     changed = apply_sheet_edits([p], parse_sheet_people(existing), now_iso=NOW_ISO)
-    assert changed == []
+    assert changed == {}
     assert p.name == "Stored Name"

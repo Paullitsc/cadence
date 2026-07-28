@@ -4,11 +4,15 @@ Company-driven, not job-driven: targets come from ``networking_targets.yaml``
 (the committed 8VC seed), not from sourcing. Each daily run:
 
 1. **Seeds/refreshes** one ``Person`` row per person (or placeholder) per target
-   company — company facts follow the YAML, identity fields fill only while blank.
+   company — company facts (tier/blurb/links) always follow the YAML.
 2. **Absorbs the human's sheet edits** from the Networking tab: who to contact
    (Person/Role/LinkedIn cells) and the ladder events only a human can observe
    (``connect_sent``/``accepted``/``message_sent``/``replied``/``closed``),
    validated forward-only. Storage first, then the sheet is rewritten to match.
+2b. **Reconciles the roster both ways** (``networking/merge.py``): a person named
+   on the sheet is folded back into ``networking_targets.yaml``, and a person
+   edited in that file propagates out to storage and the sheet. The file is the
+   durable, git-committed record; the sheet is the daily working surface.
 3. **Runs the escalation timers**: a sent connect/message that aged past its
    window becomes ``email_due`` (Phase 6b will draft that email).
 4. **Drafts** connect notes (top-up to the daily budget, tier 1 first) and
@@ -33,6 +37,7 @@ from ..models import StageContext, StageResult
 from ..networking import draft_networking_copy, load_targets, rank_bullets, seed_people
 from ..networking.copy import draft_networking_email
 from ..networking.email import create_networking_email_drafts
+from ..networking.merge import merge_identity
 from ..networking.models import (
     STATUS_CLOSED,
     STATUS_CONNECT_DRAFTED,
@@ -49,6 +54,7 @@ from ..networking.rows import (
 )
 from ..networking.sequence import DRAFT_CONNECT, DRAFT_EMAIL, MARK_EMAIL_DUE, plan_due
 from ..networking.sheet import NETWORKING_TAB, ensure_networking_tab
+from ..networking.targets import write_targets
 from ..outreach.footer import build_email_body
 from ..outreach.gmail import default_draft_fn
 from ..resume import all_bullets, load_master_resume
@@ -60,13 +66,12 @@ NAME = "networking"
 
 log = get_logger(__name__)
 
-# Company facts always follow the targets file (Paul edits tiers/blurbs there);
-# identity fields are only ever FILLED from it, never overwritten (the sheet is
-# the higher-authority channel for who to contact).
+# Company facts always follow the targets file (Paul edits tiers/blurbs there) —
+# one-way, file → storage. Identity fields are NOT handled here: they are
+# reconciled both ways against the sheet in step 2b (``networking/merge.py``).
 _COMPANY_FIELDS = (
     "company_domain", "company_website", "company_linkedin", "company_blurb", "tier",
 )
-_IDENTITY_FIELDS = ("name", "role", "linkedin_url", "email")
 
 
 def _refresh_from_seed(existing: Person, seed: Person) -> bool:
@@ -75,10 +80,6 @@ def _refresh_from_seed(existing: Person, seed: Person) -> bool:
         value = getattr(seed, field)
         if value not in (None, "") and value != getattr(existing, field):
             setattr(existing, field, value)
-            dirty = True
-    for field in _IDENTITY_FIELDS:
-        if not (getattr(existing, field) or "").strip() and getattr(seed, field):
-            setattr(existing, field, getattr(seed, field))
             dirty = True
     return dirty
 
@@ -122,14 +123,38 @@ def run(ctx: StageContext) -> StageResult:  # noqa: PLR0915 - orchestration is l
     sheet_id = None
     existing_rows: list[list[str]] = []
     human_updates = 0
+    human_edited: dict[str, set[str]] = {}
     spreadsheet_id = s.sheets_spreadsheet_id or ""
     if services is not None:
         sheet_id = ensure_networking_tab(services.sheets, spreadsheet_id)
         existing_rows = read_rows(services.sheets, spreadsheet_id, NETWORKING_TAB)
-        changed = apply_sheet_edits(people, parse_sheet_people(existing_rows), now_iso=now_iso)
-        for person in changed:
-            storage.save_person(person)
-        human_updates = len(changed)
+        human_edited = apply_sheet_edits(
+            people, parse_sheet_people(existing_rows), now_iso=now_iso
+        )
+        by_person_id = {p.person_id: p for p in people}
+        for person_id in human_edited:
+            storage.save_person(by_person_id[person_id])
+        human_updates = len(human_edited)
+
+    # 2b) Reconcile identity both ways with the targets file. The human's fresh
+    # sheet edits win (they are the delta this run); otherwise the file wins, so a
+    # name/role/LinkedIn corrected in the YAML actually reaches storage and the
+    # sheet. Storage first, then the file — a failed write is retried next run
+    # rather than leaving the file claiming something storage never accepted.
+    merged = merge_identity(campaign, targets, people, human_edited)
+    for person in merged.people_changed:
+        storage.save_person(person)
+    yaml_updated = 0
+    if merged.yaml_changed:
+        # Best-effort: a read-only checkout must not take the whole stage down —
+        # storage and the sheet already agree, only the git copy lags.
+        try:
+            yaml_updated = int(write_targets(s.networking_targets_file, campaign, targets))
+        except OSError as exc:
+            log.warning(
+                "could not write the networking targets file",
+                extra={"run_id": ctx.run_id, "path": s.networking_targets_file, "error": repr(exc)},
+            )
 
     # 3) Timers + 4) drafting.
     due = plan_due(
@@ -249,6 +274,9 @@ def run(ctx: StageContext) -> StageResult:  # noqa: PLR0915 - orchestration is l
         "networking_emails_drafted": emails,
         "networking_email_drafts_created": email_drafts_created,
         "networking_human_updates": human_updates,
+        "networking_roster_pulled": merged.pulled,
+        "networking_roster_pushed": merged.pushed,
+        "networking_targets_file_updated": yaml_updated,
         "networking_rows_appended": rows_appended,
         "networking_cells_updated": cells_updated,
         "networking_rows_removed": rows_removed,

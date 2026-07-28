@@ -6,9 +6,11 @@ by editing cells, and the pipeline absorbs those edits before it writes.
 
 Cell ownership:
 
-* **Person / Role / LinkedIn** — the human's (they identify who to contact);
-  the pipeline fills them only while blank (e.g. from the targets file) and
-  reads non-blank values back into storage.
+* **Person / Role / LinkedIn** — shared, and reconciled with the targets file:
+  a non-blank edit is read back into storage (and from there into
+  ``networking_targets.yaml``), while a value the human did NOT touch is
+  rewritten from storage, so a hand-edit made in the YAML shows up here. Blank
+  never clears a stored value. See ``networking/merge.py`` for the precedence.
 * **Status** — shared: the human sets the send/accept/reply events (validated
   forward-only in ``models.allowed_human_transition``), the pipeline sets the
   drafted/escalation states. After edits are absorbed, storage is authoritative
@@ -59,10 +61,17 @@ COL_COMPANY, COL_TIER, COL_PERSON, COL_ROLE, COL_LINKEDIN, COL_STATUS, \
 
 STATUS_OPTIONS: list[str] = list(STATUS_ORDER)
 
-# Human-identity columns: filled while blank, read back when the human edits them.
-_FILL_IF_BLANK: tuple[int, ...] = (COL_COMPANY, COL_TIER, COL_PERSON, COL_ROLE, COL_LINKEDIN)
-# Pipeline-owned columns rewritten whenever storage disagrees with the sheet.
-_ALWAYS_REFRESH: tuple[int, ...] = (COL_STATUS, COL_NEXT_STEP, COL_DRAFT)
+# Company is a =HYPERLINK() formula and reads back as its display text, so it can
+# only ever be filled while blank — comparing it would rewrite every row forever.
+_FILL_IF_BLANK: tuple[int, ...] = (COL_COMPANY,)
+# Everything else is rewritten whenever storage disagrees with the sheet. The
+# identity columns belong here because storage has already absorbed the human's
+# edit by the time the plan is built (``apply_sheet_edits`` runs first), so this
+# only ever rewrites values the human did NOT set — e.g. a name corrected in
+# networking_targets.yaml.
+_ALWAYS_REFRESH: tuple[int, ...] = (
+    COL_TIER, COL_PERSON, COL_ROLE, COL_LINKEDIN, COL_STATUS, COL_NEXT_STEP, COL_DRAFT,
+)
 
 
 def _cell(row: list[str], col: int) -> str:
@@ -172,34 +181,39 @@ def parse_sheet_people(existing: list[list[str]]) -> dict[str, SheetEdit]:
 
 def apply_sheet_edits(
     people: list[Person], edits: dict[str, SheetEdit], *, now_iso: str
-) -> list[Person]:
+) -> dict[str, set[str]]:
     """Absorb the human's sheet edits into the given people (mutated in place).
 
     Identity cells win whenever non-blank and different (blank never clears a
     stored value — an accidental cell wipe must not erase state). Status moves
     are validated by ``allowed_human_transition``; a valid move also restamps
     ``status_changed_at`` so the escalation timers measure from the human's
-    action. Returns the people that changed.
+    action.
+
+    Returns ``{person_id: attributes the human just changed}`` — the caller saves
+    those people, and ``merge.merge_identity`` uses the field names to decide
+    which side wins against ``networking_targets.yaml``. A person absent from the
+    mapping was not edited on the sheet this run.
     """
-    changed: list[Person] = []
+    changed: dict[str, set[str]] = {}
     for person in people:
         edit = edits.get(person.person_id)
         if edit is None:
             continue
-        dirty = False
+        dirty: set[str] = set()
         for attr, value in (("name", edit.name), ("role", edit.role), ("linkedin_url", edit.linkedin_url)):
             if value and value != (getattr(person, attr) or ""):
                 setattr(person, attr, value)
-                dirty = True
+                dirty.add(attr)
         if edit.status and edit.status != person.status:
             if allowed_human_transition(person.status, edit.status):
                 person.status = edit.status
                 person.status_changed_at = now_iso
-                dirty = True
+                dirty.add("status")
             # An invalid edit is silently reverted: the upsert plan rewrites the
             # Status cell back to storage's value.
         if dirty:
-            changed.append(person)
+            changed[person.person_id] = dirty
     return changed
 
 

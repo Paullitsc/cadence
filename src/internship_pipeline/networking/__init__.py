@@ -13,6 +13,7 @@ from .copy import (
     draft_networking_email,
     rank_bullets,
 )
+from .merge import IdentityMerge, merge_identity
 from .models import Person, allowed_human_transition, make_person_id
 from .sequence import (
     HumanAction,
@@ -20,7 +21,14 @@ from .sequence import (
     outstanding_actions,
     plan_due,
 )
-from .targets import NetworkingTarget, load_targets, seed_people
+from .targets import (
+    NetworkingTarget,
+    TargetPerson,
+    dump_targets,
+    load_targets,
+    seed_people,
+    write_targets,
+)
 
 # NOTE: ``networking.email`` is deliberately NOT re-exported here. It imports
 # ``storage`` (for the suppression check), and ``storage.base`` imports
@@ -30,18 +38,23 @@ from .targets import NetworkingTarget, load_targets, seed_people
 
 __all__ = [
     "HumanAction",
+    "IdentityMerge",
     "NetworkingContent",
     "NetworkingEmail",
     "NetworkingTarget",
     "Person",
+    "TargetPerson",
     "allowed_human_transition",
     "awaiting_person_count",
     "draft_networking_copy",
     "draft_networking_email",
+    "dump_targets",
     "load_targets",
     "make_person_id",
+    "merge_identity",
     "outstanding_actions",
     "plan_due",
     "rank_bullets",
     "seed_people",
+    "write_targets",
 ]

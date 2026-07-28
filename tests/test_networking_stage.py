@@ -219,3 +219,68 @@ def test_digest_renders_networking_actions(stage_settings):
 def test_digest_without_networking_stays_clean():
     html = render_digest(jobs=[], run_id="test-run")
     assert "Networking — today's LinkedIn actions" not in html
+
+
+def test_people_added_to_the_targets_file_reach_storage(stage_settings):
+    """The reported bug: new ``people:`` entries never showed up downstream."""
+    ctx, _ = _run(stage_settings)
+    assert {p.person_id for p in ctx.get_storage().list_people()} == {
+        "test-alpha-robotics-1", "test-beta-systems-1", "test-gamma-unknown-1"
+    }
+
+    targets = Path(stage_settings.networking_targets_file)
+    targets.write_text(
+        TARGETS_YAML.replace(
+            "  - name: Gamma Unknown\n    tier: 1\n",
+            "  - name: Gamma Unknown\n    tier: 1\n"
+            "    people:\n"
+            "      - name: Ada Lovelace\n"
+            "        role: VP Eng\n"
+            "      - name: Grace Hopper\n",
+        ),
+        encoding="utf-8",
+    )
+    ctx, _ = _run(stage_settings)
+    by_id = {p.person_id: p for p in ctx.get_storage().list_people()}
+
+    # The placeholder is claimed by the first listed person; the second is new.
+    assert by_id["test-gamma-unknown-1"].name == "Ada Lovelace"
+    assert by_id["test-gamma-unknown-1"].role == "VP Eng"
+    assert by_id["test-gamma-unknown-2"].name == "Grace Hopper"
+
+
+def test_targets_file_edit_overwrites_an_already_filled_field(stage_settings):
+    """A correction in the YAML must propagate, not be ignored as 'already set'."""
+    ctx, _ = _run(stage_settings)
+    targets = Path(stage_settings.networking_targets_file)
+    targets.write_text(
+        TARGETS_YAML.replace("name: Jane Doe", "name: Jane D. Doe"), encoding="utf-8"
+    )
+
+    ctx, result = _run(stage_settings)
+
+    people = {p.person_id: p for p in ctx.get_storage().list_people()}
+    assert people["test-alpha-robotics-1"].name == "Jane D. Doe"
+    assert result.counts["networking_roster_pulled"] == 1
+    assert result.counts["networking_targets_file_updated"] == 0  # nothing to push back
+
+
+def test_person_identified_in_storage_is_written_back_to_the_targets_file(stage_settings):
+    """Storage -> file: what the sheet edit path produces, without a live sheet."""
+    ctx, _ = _run(stage_settings)
+    storage = ctx.get_storage()
+    gamma = storage.get_person("test-gamma-unknown-1")  # the placeholder row
+    gamma.name = "Ada Lovelace"
+    gamma.linkedin_url = "https://linkedin.com/in/ada"
+    storage.save_person(gamma)
+
+    _, result = _run(stage_settings)
+
+    assert result.counts["networking_targets_file_updated"] == 1
+    text = Path(stage_settings.networking_targets_file).read_text(encoding="utf-8")
+    assert "Ada Lovelace" in text and "linkedin.com/in/ada" in text
+
+    # Converged: a further run neither pushes nor rewrites.
+    _, result = _run(stage_settings)
+    assert result.counts["networking_targets_file_updated"] == 0
+    assert result.counts["networking_roster_pushed"] == 0
