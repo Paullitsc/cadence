@@ -141,16 +141,24 @@ jobs:
       # names and LinkedIn URLs and this repo is PUBLIC, so — like the master
       # résumé — it is git-ignored and never present in the checkout. Unset means
       # no file, and the networking stage logs one line and no-ops.
+      #
+      # Stored gzip+base64: GitHub caps a secret at 48KB and the raw roster is
+      # ~71KB (~28KB encoded). `make roster-push` is the exact inverse of this.
       - name: Write networking roster
         env:
           NETWORKING_TARGETS_YAML: ${{ secrets.NETWORKING_TARGETS_YAML }}
         run: |
-          if [ -n "$NETWORKING_TARGETS_YAML" ]; then
-            printf '%s' "$NETWORKING_TARGETS_YAML" > networking_targets.yaml
-            echo "roster materialized ($(wc -c < networking_targets.yaml) bytes)"
-          else
+          if [ -z "$NETWORKING_TARGETS_YAML" ]; then
             echo "::warning title=No networking roster::NETWORKING_TARGETS_YAML secret unset — the networking stage will no-op."
+            exit 0
           fi
+          if ! printf '%s' "$NETWORKING_TARGETS_YAML" \
+               | base64 -d 2>/dev/null | gunzip > networking_targets.yaml 2>/dev/null; then
+            rm -f networking_targets.yaml
+            echo "::error title=Bad networking roster::NETWORKING_TARGETS_YAML could not be decoded (expected gzip+base64 — run 'make roster-push'). The networking stage will no-op."
+            exit 0
+          fi
+          echo "roster materialized ($(wc -c < networking_targets.yaml) bytes)"
 
       - name: Write master résumé
         env:
