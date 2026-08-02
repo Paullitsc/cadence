@@ -146,3 +146,44 @@ def test_merge_blank_cells_never_clear_stored_values():
     changed = apply_sheet_edits([p], parse_sheet_people(existing), now_iso=NOW_ISO)
     assert changed == {}
     assert p.name == "Stored Name"
+
+
+def test_sort_specs_group_a_company_that_grew_after_its_first_row():
+    """The append-only bug: people added at an already-listed company land at the
+    bottom of the tab, so the company's row reads as "only one person picked up".
+    Sorting by the request's specs has to put them back together."""
+    from internship_pipeline.networking.sheet import sort_request
+
+    def row(company: str, tier: str, pid: str) -> list[str]:
+        r = [""] * len(HEADERS)
+        r[0], r[1], r[COL_KEY] = company, tier, pid
+        return r
+
+    rows = [
+        row("AgVend", "1", "8vc-agvend-1"),
+        row("Alloy", "1", "8vc-alloy-1"),
+        row("Zebra", "2", "8vc-zebra-1"),
+        row("Alloy Therapeutics", "1", "8vc-alloy-therapeutics-1"),
+        # ...160 rows later, everything appended by a subsequent run:
+        row("AgVend", "1", "8vc-agvend-2"),
+        row("Alloy", "1", "8vc-alloy-3"),
+        row("Alloy", "1", "8vc-alloy-2"),
+    ]
+
+    spec = sort_request(7)["sortRange"]
+    # startRowIndex=1 keeps the header out of it; no column bound, so Notes (and
+    # anything further right) travel with their row.
+    assert spec["range"] == {"sheetId": 7, "startRowIndex": 1}
+    assert all(s["sortOrder"] == "ASCENDING" for s in spec["sortSpecs"])
+    cols = [s["dimensionIndex"] for s in spec["sortSpecs"]]
+    ordered = sorted(rows, key=lambda r: [r[c] for c in cols])
+
+    assert [r[COL_KEY] for r in ordered] == [
+        "8vc-agvend-1",
+        "8vc-agvend-2",
+        "8vc-alloy-1",
+        "8vc-alloy-2",
+        "8vc-alloy-3",
+        "8vc-alloy-therapeutics-1",  # a longer name never splits the shorter one
+        "8vc-zebra-1",  # tier 2 sorts below every tier 1
+    ]

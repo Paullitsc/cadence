@@ -53,7 +53,7 @@ from ..networking.rows import (
     plan_people_upsert,
 )
 from ..networking.sequence import DRAFT_CONNECT, DRAFT_EMAIL, MARK_EMAIL_DUE, plan_due
-from ..networking.sheet import NETWORKING_TAB, ensure_networking_tab
+from ..networking.sheet import NETWORKING_TAB, ensure_networking_tab, sort_networking_rows
 from ..networking.targets import write_targets
 from ..outreach.footer import build_email_body
 from ..outreach.gmail import default_draft_fn
@@ -265,6 +265,10 @@ def run(ctx: StageContext) -> StageResult:  # noqa: PLR0915 - orchestration is l
         apply_plan(services.sheets, spreadsheet_id, NETWORKING_TAB, plan)
         rows_appended = len(plan.appends)
         cells_updated = len(plan.updates)
+        # Appends land at the bottom of the tab, so the second person added at an
+        # already-listed company would sit far from the first. Re-sort last, once
+        # every row index this run has been used.
+        sort_networking_rows(services.sheets, spreadsheet_id, sheet_id)
 
     counts = {
         "networking_people_seeded": seeded,

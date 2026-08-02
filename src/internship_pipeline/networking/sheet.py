@@ -5,6 +5,12 @@ Mirrors ``tracker/sheets.py`` (whose generic ``read_rows``/``apply_plan``/
 its one-time cosmetics — status dropdown, per-status row colors, hidden
 person-id column, frozen header — and, like the tracker, re-applies the Status
 dropdown on every sync so it self-heals.
+
+The tab is also re-sorted on every sync (``sort_networking_rows``). Unlike the
+tracker, this tab is *read* by the human company by company, and new rows are
+appended at the bottom by the Sheets API — so the second person added at an
+already-listed company lands ~160 rows below the first and reads as "the
+pipeline only picked up one person". Sorting is the fix, and it is idempotent.
 """
 
 from __future__ import annotations
@@ -12,7 +18,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..logging_config import get_logger
-from .rows import COL_KEY, COL_STATUS, HEADERS, STATUS_OPTIONS
+from .rows import COL_COMPANY, COL_KEY, COL_STATUS, COL_TIER, HEADERS, STATUS_OPTIONS
 
 log = get_logger(__name__)
 
@@ -53,6 +59,47 @@ def _status_dropdown_request(sheet_id: int) -> dict:
             },
         }
     }
+
+
+def sort_request(sheet_id: int) -> dict:
+    """Re-sort the data rows into tier → company → person order.
+
+    New people are added with ``values().append``, which can only put a row at
+    the BOTTOM of the tab. That is wrong for this tab specifically: a company's
+    people have to sit together, or the human reading a company's row concludes
+    the pipeline picked up only the first of the people they listed.
+
+    Sorting by ``Person id`` last keeps a company's people in the order the
+    targets file lists them (the id is positional), and — because the id is
+    ``<campaign>-<company-slug>-<n>`` — it also groups the company even when the
+    Company cell is a ``=HYPERLINK()`` formula. Past nine people at one company
+    the text sort puts ``-10`` before ``-2``; they stay grouped, which is the
+    point. Row-level: the range is unbounded in columns so Notes (and anything
+    the human parked further right) travel with their row, and unbounded below
+    so the blank tail of the grid simply sorts last.
+    """
+    return {
+        "sortRange": {
+            "range": {"sheetId": sheet_id, "startRowIndex": 1},
+            "sortSpecs": [
+                {"dimensionIndex": COL_TIER, "sortOrder": "ASCENDING"},
+                {"dimensionIndex": COL_COMPANY, "sortOrder": "ASCENDING"},
+                {"dimensionIndex": COL_KEY, "sortOrder": "ASCENDING"},
+            ],
+        }
+    }
+
+
+def sort_networking_rows(sheets: Any, spreadsheet_id: str, sheet_id: int) -> None:
+    """Apply :func:`sort_request` — called at the END of every sync.
+
+    Every run, not only when rows were appended: it is idempotent (an ordered
+    tab sorts to itself), it repairs a tab whose rows were appended out of order
+    by earlier runs, and it survives the human dragging rows around.
+    """
+    sheets.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id, body={"requests": [sort_request(sheet_id)]}
+    ).execute()
 
 
 def _setup_requests(sheet_id: int) -> list[dict]:
