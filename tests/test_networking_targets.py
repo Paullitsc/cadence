@@ -6,12 +6,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from internship_pipeline.networking.models import (
     allowed_human_transition,
     make_person_id,
 )
-from internship_pipeline.networking.targets import load_targets, seed_people
+from internship_pipeline.networking.targets import dump_targets, load_targets, seed_people
 
 # The real roster is git-ignored (public repo, real people's names — CI
 # materializes it from the NETWORKING_TARGETS_YAML secret), so the shape checks
@@ -118,6 +119,38 @@ def test_sample_roster_loads():
     assert by_id["fixture-northwind-robotics-1"].name == "Jane Doe"
     # A company with nobody listed still gets exactly one placeholder row.
     assert by_id["fixture-placeholder-only-co-1"].has_identity() is False
+
+
+def test_seeding_carries_the_researched_personalization_fields():
+    """``hook``/``background`` are roster-only (no sheet column), so seeding is the
+    only way they ever reach a draft."""
+    campaign, targets = load_targets(SAMPLE_TARGETS)
+    by_id = {p.person_id: p for p in seed_people(campaign, targets)}
+
+    jane = by_id["fixture-northwind-robotics-1"]
+    assert "reassigning work mid-shift" in jane.company_hook
+    assert jane.background == "building the onboard perception stack from scratch"
+    # Company hook is denormalized onto every person at that company; background
+    # belongs to the individual.
+    assert by_id["fixture-northwind-robotics-2"].company_hook == jane.company_hook
+    assert by_id["fixture-northwind-robotics-2"].background == ""
+    # Neither is required — a company with no research still seeds cleanly.
+    assert by_id["fixture-quietfield-1"].company_hook == ""
+
+
+def test_hook_and_background_survive_the_yaml_round_trip():
+    """The roster is rewritten in place every run, so a field the dumper forgets
+    would be silently erased from Paul's own research."""
+    campaign, targets = load_targets(SAMPLE_TARGETS)
+    reparsed = yaml.safe_load(dump_targets(campaign, targets))
+    northwind = next(c for c in reparsed["companies"] if c["name"] == "Northwind Robotics")
+    assert "reassigning work mid-shift" in northwind["hook"]
+    assert northwind["people"][0]["background"] == (
+        "building the onboard perception stack from scratch"
+    )
+    # Empty research is omitted rather than written as a blank key.
+    quietfield = next(c for c in reparsed["companies"] if c["name"] == "Quietfield")
+    assert "hook" not in quietfield
 
 
 @pytest.mark.skipif(not REPO_TARGETS.exists(), reason="private roster not present")

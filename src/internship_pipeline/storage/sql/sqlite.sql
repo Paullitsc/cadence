@@ -113,11 +113,13 @@ CREATE TABLE IF NOT EXISTS people (
     company_website   TEXT,
     company_linkedin  TEXT,
     company_blurb     TEXT NOT NULL DEFAULT '',
+    company_hook      TEXT NOT NULL DEFAULT '',   -- one SPECIFIC researched fact
     tier              INTEGER NOT NULL DEFAULT 2,
     name              TEXT,
     role              TEXT,
     linkedin_url      TEXT,
     email             TEXT,
+    background        TEXT NOT NULL DEFAULT '',   -- what THIS person has worked on
     status            TEXT NOT NULL DEFAULT 'queued',
     status_changed_at TEXT,               -- escalation timers measure from here
     draft_kind        TEXT,               -- connect | message | email (Phase 6b)

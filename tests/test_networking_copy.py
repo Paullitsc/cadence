@@ -6,6 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from internship_pipeline.networking.copy import (
+    _build_user_text,
     deterministic_connect_note,
     deterministic_message,
     draft_networking_copy,
@@ -25,6 +26,11 @@ PERSON = Person(
     name="Jane Doe",
     role="CTO",
 )
+
+# The same person once the roster carries the hand-researched personalization.
+HOOK = "their scheduler reassigning work mid-shift when a machine drops out"
+BACKGROUND = "building the onboard perception stack"
+RESEARCHED = PERSON.model_copy(update={"company_hook": HOOK, "background": BACKGROUND})
 
 
 def _setup():
@@ -54,7 +60,9 @@ def test_deterministic_message_references_company_and_real_bullets():
     top = rank_bullets(resume, bullets, PERSON, limit=2)
     message = deterministic_message(PERSON, resume, top)
     assert "Robotics Co" in message
-    assert top[0].text.replace("**", "") in message
+    # The bullet keeps its own wording; only its trailing period is dropped so the
+    # source parenthetical can follow it.
+    assert top[0].text.replace("**", "").rstrip(".") in message
     assert "Test Candidate" in message  # signs with the real name
 
 
@@ -125,3 +133,107 @@ def test_vocab_includes_blurb_and_bullets_only_from_real_sources():
     assert "warehouse" in vocab  # from the blurb
     assert "kafka" in vocab  # from a real bullet
     assert "google" not in vocab
+
+
+# --------------------------------------------------------------------------- #
+# Personalization: the researched hook + background are what make a draft land
+# --------------------------------------------------------------------------- #
+def test_message_names_the_hook_and_asks_about_them():
+    resume, bullets = _setup()
+    top = rank_bullets(resume, bullets, RESEARCHED, limit=2)
+    message = deterministic_message(RESEARCHED, resume, top)
+    # The two specific beats, and a question aimed at the recipient.
+    assert HOOK in message
+    assert BACKGROUND in message
+    assert "15 minutes" in message
+    # The failure mode this rewrite exists to kill: a bullet dump plus an
+    # internship ask, which reads as a form letter.
+    assert "\n- " not in message
+    assert "intern" not in message.lower()
+    assert top[0].text.replace("**", "") not in message
+
+
+def test_message_degrades_to_one_credential_without_research():
+    """No hook/background yet → still prose, still a call ask, never a list."""
+    resume, bullets = _setup()
+    top = rank_bullets(resume, bullets, PERSON, limit=2)
+    message = deterministic_message(PERSON, resume, top)
+    assert top[0].text.replace("**", "").rstrip(".") in message  # one, not two
+    assert top[1].text.replace("**", "") not in message
+    assert "\n- " not in message
+    assert "intern" not in message.lower()
+
+
+def test_connect_note_names_the_company_before_the_hook():
+    """Hooks are noun phrases that often open with a possessive, so the company
+    has to be introduced first or 'their' dangles."""
+    resume, _ = _setup()
+    note = deterministic_connect_note(RESEARCHED, resume)
+    assert HOOK in note
+    assert len(note) <= LINKEDIN_NOTE_LIMIT
+    assert note.index("Robotics Co") < note.index(HOOK)
+
+
+def test_overlong_hook_falls_back_to_the_generic_note():
+    resume, _ = _setup()
+    verbose = PERSON.model_copy(update={"company_hook": "a scheduler " * 40})
+    note = deterministic_connect_note(verbose, resume)
+    assert len(note) <= LINKEDIN_NOTE_LIMIT
+    assert "a scheduler a scheduler" not in note  # generic variant, not a truncation
+
+
+def test_rank_bullets_uses_the_recipients_background():
+    """The background is the most specific signal available — it should be able to
+    change which bullet is surfaced."""
+    resume, bullets = _setup()
+    person = PERSON.model_copy(
+        update={"company_blurb": "", "background": "writing Java query planners"}
+    )
+    top = rank_bullets(resume, bullets, person, limit=1)
+    assert "query planner" in top[0].text.lower()
+
+
+def test_user_text_labels_missing_research_instead_of_omitting_it():
+    """A silently absent field invites the model to fill the gap from its own
+    knowledge of the company; an explicit '(not provided)' does not."""
+    resume, bullets = _setup()
+    text = _build_user_text(PERSON, bullets[:2], resume)
+    assert text.count("(not provided") == 2
+    filled = _build_user_text(RESEARCHED, bullets[:2], resume)
+    assert "(not provided" not in filled
+    assert HOOK in filled and BACKGROUND in filled
+
+
+def test_message_in_the_intended_voice_survives_grounding():
+    """The regression guard for the vocabulary widening.
+
+    Grounding rejects a field on ONE unknown token and silently ships the
+    template instead — so an ordinary, curiosity-led message written in the voice
+    the prompt now asks for MUST pass, or the rewrite is invisible in production.
+    """
+    resume, bullets = _setup()
+    top = rank_bullets(resume, bullets, RESEARCHED, limit=2)
+
+    def fake_complete(system_blocks, user_text):
+        return {
+            "connect_note": "Hi Jane — I keep coming back to Robotics Co's work. "
+                            "Would love to connect!",
+            "message": (
+                "Hi Jane, thanks for the connect!\n\n"
+                "I'm Test Candidate, a computer science student who has been going "
+                "deep on data infrastructure lately.\n\n"
+                "I read up on Robotics Co and was genuinely surprised by "
+                f"{HOOK} — I had assumed that was the whole hard part. I "
+                f"also noticed your background in {BACKGROUND}, and I'm curious how "
+                "much of that expertise translates to the problems you are working "
+                "on today.\n\n"
+                "Would you have 15 minutes at your convenience for a quick call?\n\n"
+                "Thanks for your time,\nTest Candidate"
+            ),
+        }
+
+    note, message = draft_networking_copy(
+        person=RESEARCHED, resume=resume, top_bullets=top, complete=fake_complete
+    )
+    assert message.used_llm is True, "the intended voice must not fail grounding"
+    assert note.used_llm is True

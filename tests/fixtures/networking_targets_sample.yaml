@@ -16,10 +16,13 @@ companies:
   blurb: Northwind Robotics builds autonomous material-handling systems for high-throughput warehouses,
     pairing a fleet-scheduling planner with onboard perception so a single operator can supervise
     hundreds of machines across several sites at once.
+  hook: their fleet-scheduling planner reassigning work mid-shift when a machine drops out, instead
+    of restarting the whole plan
   people:
   - name: Jane Doe
     role: CTO
     linkedin: https://www.linkedin.com/in/jane-doe-fixture/
+    background: building the onboard perception stack from scratch
   - name: Sam Lee
     role: Staff Software Engineer
     linkedin: https://www.linkedin.com/in/sam-lee-fixture/
@@ -31,6 +34,8 @@ companies:
   blurb: Harborline Health operates a network of technology-enabled clinics that fold remote monitoring,
     pharmacy, and care coordination into one record, so a patient's whole history follows them between
     visits instead of being rebuilt each time.
+  hook: folding pharmacy and remote monitoring into one record rather than syncing three systems after
+    the fact
 - name: Quietfield
   tier: 3
   stage: Growth

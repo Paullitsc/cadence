@@ -47,6 +47,9 @@ class TargetPerson(BaseModel):
     role: Optional[str] = None
     linkedin: Optional[str] = None
     email: Optional[str] = None
+    # Hand-researched noun phrase describing what they've worked on — see
+    # ``Person.background``. Optional; drafts degrade to candidate-only copy.
+    background: str = ""
 
     @field_validator("name")
     @classmethod
@@ -64,6 +67,9 @@ class NetworkingTarget(BaseModel):
     domain: Optional[str] = None
     company_linkedin: Optional[str] = None
     blurb: str = ""
+    # Hand-researched noun phrase naming something specific — see
+    # ``Person.company_hook``. Optional; without it drafts stay generic.
+    hook: str = ""
     people: list[TargetPerson] = Field(default_factory=list)
 
     @field_validator("name")
@@ -110,7 +116,12 @@ def load_targets(path: str | Path) -> tuple[str, list[NetworkingTarget]]:
 
 def _person_to_dict(tp: TargetPerson) -> dict:
     row: dict = {"name": tp.name}
-    for key, value in (("role", tp.role), ("linkedin", tp.linkedin), ("email", tp.email)):
+    for key, value in (
+        ("role", tp.role),
+        ("linkedin", tp.linkedin),
+        ("email", tp.email),
+        ("background", tp.background),
+    ):
         if value:
             row[key] = value
     return row
@@ -125,6 +136,7 @@ def _target_to_dict(target: NetworkingTarget) -> dict:
         ("domain", target.domain),
         ("company_linkedin", target.company_linkedin),
         ("blurb", target.blurb),
+        ("hook", target.hook),
     ):
         if value:
             row[key] = value
@@ -181,6 +193,7 @@ def seed_people(campaign: str, targets: list[NetworkingTarget]) -> list[Person]:
             company_website=target.website,
             company_linkedin=target.company_linkedin,
             company_blurb=target.blurb,
+            company_hook=target.hook,
             tier=target.tier,
         )
         if not target.people:
@@ -196,6 +209,7 @@ def seed_people(campaign: str, targets: list[NetworkingTarget]) -> list[Person]:
                     role=tp.role,
                     linkedin_url=tp.linkedin,
                     email=tp.email,
+                    background=tp.background,
                     **company_common,
                 )
             )

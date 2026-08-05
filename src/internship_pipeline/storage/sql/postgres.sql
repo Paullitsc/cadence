@@ -127,11 +127,13 @@ create table if not exists public.people (
     company_website   text,
     company_linkedin  text,
     company_blurb     text not null default '',
+    company_hook      text not null default '',   -- one SPECIFIC researched fact
     tier              integer not null default 2,
     name              text,
     role              text,
     linkedin_url      text,
     email             text,
+    background        text not null default '',   -- what THIS person has worked on
     status            text not null default 'queued',
     status_changed_at text,               -- escalation timers measure from here
     draft_kind        text,               -- connect | message | email (Phase 6b)
@@ -147,3 +149,6 @@ create index if not exists idx_people_status on public.people (status);
 -- Existing Supabase databases: add the Phase 6b columns (no-op if already present).
 alter table public.people add column if not exists gmail_draft_id text;
 alter table public.people add column if not exists gmail_draft_link text;
+-- Personalization fields (the researched company/person hooks).
+alter table public.people add column if not exists company_hook text not null default '';
+alter table public.people add column if not exists background text not null default '';

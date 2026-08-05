@@ -66,17 +66,21 @@ NAME = "networking"
 
 log = get_logger(__name__)
 
-# Company facts always follow the targets file (Paul edits tiers/blurbs there) —
-# one-way, file → storage. Identity fields are NOT handled here: they are
-# reconciled both ways against the sheet in step 2b (``networking/merge.py``).
-_COMPANY_FIELDS = (
-    "company_domain", "company_website", "company_linkedin", "company_blurb", "tier",
+# Facts that always follow the targets file (Paul edits tiers/blurbs/research
+# there) — one-way, file → storage. ``company_hook`` and ``background`` are the
+# hand-researched personalization fields: they have no sheet column, so the file
+# is their only authoring surface and re-reading them here is what lets a hook
+# added today change tomorrow's draft. Identity fields are NOT handled here: they
+# are reconciled both ways against the sheet in step 2b (``networking/merge.py``).
+_SEED_OWNED_FIELDS = (
+    "company_domain", "company_website", "company_linkedin", "company_blurb",
+    "company_hook", "background", "tier",
 )
 
 
 def _refresh_from_seed(existing: Person, seed: Person) -> bool:
     dirty = False
-    for field in _COMPANY_FIELDS:
+    for field in _SEED_OWNED_FIELDS:
         value = getattr(seed, field)
         if value not in (None, "") and value != getattr(existing, field):
             setattr(existing, field, value)

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import pytest
 
 from internship_pipeline.models import Job, JobSource, RunRecord
+from internship_pipeline.networking.models import Person
 from internship_pipeline.storage.sqlite_store import SQLiteStore
 
 
@@ -116,3 +117,45 @@ def test_conn_closes_the_connection_not_just_commits(tmp_path, monkeypatch):
     for conn in opened:
         with pytest.raises(sqlite3.ProgrammingError):
             conn.execute("SELECT 1")
+
+
+def test_person_round_trips_the_personalization_fields(tmp_path):
+    """``company_hook``/``background`` drive draft quality, and the stage reloads
+    every person from storage before drafting — a column missed in save/load would
+    quietly hand the drafting step generic copy again."""
+    store = SQLiteStore(str(tmp_path / "p.db"))
+    store.save_person(
+        Person(
+            person_id="c-acme-1",
+            company_name="Acme",
+            company_hook="their planner reassigning work mid-shift",
+            name="Jane Doe",
+            background="building fraud-detection pipelines",
+        )
+    )
+
+    loaded = store.get_person("c-acme-1")
+    assert loaded is not None
+    assert loaded.company_hook == "their planner reassigning work mid-shift"
+    assert loaded.background == "building fraud-detection pipelines"
+    assert store.list_people()[0].company_hook == loaded.company_hook
+
+
+def test_existing_people_table_gains_the_new_columns(tmp_path):
+    """Paul's local DB predates these columns; the ALTER-on-startup migration is
+    what stops the next run from crashing on it."""
+    path = str(tmp_path / "old.db")
+    with sqlite3.connect(path) as conn:  # the schema exactly as it shipped pre-change
+        conn.execute(
+            "CREATE TABLE people (person_id TEXT PRIMARY KEY, campaign TEXT, "
+            "company_name TEXT, company_domain TEXT, company_website TEXT, "
+            "company_linkedin TEXT, company_blurb TEXT, tier INTEGER, name TEXT, "
+            "role TEXT, linkedin_url TEXT, email TEXT, status TEXT, "
+            "status_changed_at TEXT, draft_kind TEXT, draft_subject TEXT, "
+            "draft_body TEXT, used_llm INTEGER, gmail_draft_id TEXT, "
+            "gmail_draft_link TEXT, created_at TEXT, updated_at TEXT)"
+        )
+
+    store = SQLiteStore(path)  # __init__ applies _MIGRATIONS
+    store.save_person(Person(person_id="c-acme-1", company_name="Acme", background="x"))
+    assert store.get_person("c-acme-1").background == "x"

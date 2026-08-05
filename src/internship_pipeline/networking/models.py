@@ -126,7 +126,12 @@ class Person(BaseModel):
     company_domain: Optional[str] = None  # feeds the Phase-6b email lookup
     company_website: Optional[str] = None
     company_linkedin: Optional[str] = None  # where the human goes to find people
-    company_blurb: str = ""  # the ONLY company facts drafting may use
+    company_blurb: str = ""  # generic company facts drafting may use
+    # One SPECIFIC thing about the company the human researched — a product, a
+    # model, a launch — written as a noun phrase that can complete a sentence
+    # ("Jamba 1.6, their hybrid SSM-Transformer model"). The blurb is marketing
+    # copy every competitor could also claim; this is what makes a draft land.
+    company_hook: str = ""
     tier: int = 2  # 1 = earliest/most reachable; drafting budget is spent tier 1 first
 
     # Identity — filled from the targets file or by the human on the sheet.
@@ -134,6 +139,11 @@ class Person(BaseModel):
     role: Optional[str] = None
     linkedin_url: Optional[str] = None
     email: Optional[str] = None  # optional seed; Phase 6b can look it up instead
+    # What THIS person has done, as a noun phrase ("building end-to-end
+    # fraud-detection pipelines"). Same job as ``company_hook`` for the recipient:
+    # without it a draft can only ever talk about the candidate. Roster-only —
+    # there is no sheet column, so it never round-trips through ``merge.py``.
+    background: str = ""
 
     status: str = STATUS_QUEUED
     status_changed_at: Optional[str] = None  # ISO; escalation timers measure from here

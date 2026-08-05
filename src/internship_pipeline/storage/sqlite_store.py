@@ -126,11 +126,13 @@ CREATE TABLE IF NOT EXISTS people (
     company_website   TEXT,
     company_linkedin  TEXT,
     company_blurb     TEXT NOT NULL DEFAULT '',
+    company_hook      TEXT NOT NULL DEFAULT '',
     tier              INTEGER NOT NULL DEFAULT 2,
     name              TEXT,
     role              TEXT,
     linkedin_url      TEXT,
     email             TEXT,
+    background        TEXT NOT NULL DEFAULT '',
     status            TEXT NOT NULL DEFAULT 'queued',
     status_changed_at TEXT,               -- escalation timers measure from here
     draft_kind        TEXT,               -- connect | message (6b: email)
@@ -155,6 +157,8 @@ _MIGRATIONS: list[tuple[str, str, str]] = [
     ("cv_cache", "recommended_bullets", "TEXT"),
     ("people", "gmail_draft_id", "TEXT"),
     ("people", "gmail_draft_link", "TEXT"),
+    ("people", "company_hook", "TEXT NOT NULL DEFAULT ''"),
+    ("people", "background", "TEXT NOT NULL DEFAULT ''"),
 ]
 
 
@@ -508,11 +512,11 @@ class SQLiteStore(Storage):
             created = row[0] if row else now
             conn.execute(
                 "INSERT OR REPLACE INTO people (person_id, campaign, company_name, "
-                "company_domain, company_website, company_linkedin, company_blurb, tier, "
-                "name, role, linkedin_url, email, status, status_changed_at, draft_kind, "
-                "draft_subject, draft_body, used_llm, gmail_draft_id, gmail_draft_link, "
-                "created_at, updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "company_domain, company_website, company_linkedin, company_blurb, company_hook, tier, "
+                "name, role, linkedin_url, email, background, status, status_changed_at, "
+                "draft_kind, draft_subject, draft_body, used_llm, gmail_draft_id, "
+                "gmail_draft_link, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     person.person_id,
                     person.campaign,
@@ -521,11 +525,13 @@ class SQLiteStore(Storage):
                     person.company_website,
                     person.company_linkedin,
                     person.company_blurb,
+                    person.company_hook,
                     person.tier,
                     person.name,
                     person.role,
                     person.linkedin_url,
                     person.email,
+                    person.background,
                     person.status,
                     person.status_changed_at,
                     person.draft_kind,
@@ -549,11 +555,13 @@ class SQLiteStore(Storage):
             company_website=row["company_website"],
             company_linkedin=row["company_linkedin"],
             company_blurb=row["company_blurb"] or "",
+            company_hook=row["company_hook"] or "",
             tier=row["tier"],
             name=row["name"],
             role=row["role"],
             linkedin_url=row["linkedin_url"],
             email=row["email"],
+            background=row["background"] or "",
             status=row["status"],
             status_changed_at=row["status_changed_at"],
             draft_kind=row["draft_kind"],
