@@ -171,37 +171,59 @@ def test_pages_render_html(review_app):
     assert review_app.review_html("missing") is None
 
 
-# --- ReviewApp.discard / restore ------------------------------------------------------
-def test_discard_marks_withdrawn_without_reviewing(review_app):
-    review_app.storage.save_application(_app(status="pending_review"))
+# --- ReviewApp.discard / restore (batched: the UI picks rows, then acts once) -----------
+def test_discard_marks_a_batch_withdrawn_without_reviewing(review_app):
+    for key in ("k1", "k2", "k3"):
+        review_app.storage.save_application(_app(dedupe_key=key, status="pending_review"))
 
-    assert review_app.discard("k1") == {"ok": True, "status": "withdrawn"}
+    result = review_app.discard(["k1", "k3", "k3"])  # duplicate key counted once
+    assert result == {"ok": True, "discarded": 2, "errors": []}
+
     stored = review_app.storage.get_application("k1")
     assert stored.status == "withdrawn"
     assert not stored.reviewed_at and not stored.final_bullets  # never reviewed
-    assert review_app.discard("k1")["ok"] is True  # idempotent (double-click)
+    assert review_app.storage.get_application("k2").status == "pending_review"  # untouched
+    # re-discarding is a no-op, not an error (double-click / stale page)
+    assert review_app.discard(["k1"]) == {"ok": True, "discarded": 0, "errors": []}
 
-    # gone from the pending list, listed as discarded with a Restore button
     index = review_app.index_html()
-    assert "0 pending" in index
-    assert "Discarded (1)" in index and "Restore" in index
+    assert "1 pending" in index
+    assert "Discarded (2)" in index and "Restore" in index
 
 
-def test_discard_refuses_a_reviewed_application(review_app):
-    """It already owns a sheet row — only the sheet's Status dropdown removes that."""
+def test_discard_reports_per_key_failures_and_still_discards_the_rest(review_app):
+    """One bad key must not sink the batch — the UI shows what didn't go."""
+    review_app.storage.save_application(_app(dedupe_key="k1", status="pending_review"))
+    review_app.storage.save_application(_app(dedupe_key="k2", status="reviewed"))
+
+    result = review_app.discard(["k1", "k2", "ghost"])
+    assert result["discarded"] == 1 and result["ok"] is False
+    assert len(result["errors"]) == 2
+    # a reviewed application owns a sheet row — only the Status dropdown removes that
+    assert any("tracker sheet" in e for e in result["errors"])
+    assert review_app.storage.get_application("k1").status == "withdrawn"
+    assert review_app.storage.get_application("k2").status == "reviewed"
+
+
+def test_restore_puts_discarded_applications_back(review_app):
+    review_app.storage.save_application(_app(dedupe_key="k1", status="withdrawn"))
+    review_app.storage.save_application(_app(dedupe_key="k2", status="withdrawn"))
+    assert review_app.restore(["k1", "k2"]) == {"ok": True, "restored": 2, "errors": []}
+    assert review_app.storage.get_application("k1").status == "pending_review"
+    assert "2 pending" in review_app.index_html()
+
+
+def test_restore_rejects_a_reviewed_application(review_app):
     review_app.storage.save_application(_app(status="reviewed"))
-    result = review_app.discard("k1")
-    assert "error" in result and "tracker sheet" in result["error"]
+    assert review_app.restore(["k1"])["errors"]
     assert review_app.storage.get_application("k1").status == "reviewed"
 
 
-def test_restore_puts_a_discarded_application_back(review_app):
-    review_app.storage.save_application(_app(status="withdrawn"))
-    assert review_app.restore("k1") == {"ok": True, "status": "pending_review"}
-    assert review_app.storage.get_application("k1").status == "pending_review"
-    assert "1 pending" in review_app.index_html()
-
-
-def test_discard_and_restore_reject_unknown_applications(review_app):
-    assert "error" in review_app.discard("nope")
-    assert "error" in review_app.restore("nope")
+def test_pending_rows_carry_pick_checkboxes_and_a_bulk_bar(review_app):
+    review_app.storage.save_application(_app(status="pending_review"))
+    index = review_app.index_html()
+    assert 'class="rowpick" value="k1"' in index
+    assert "toggleAll('pending', this)" in index  # select-all in the header
+    assert "applyPick('pending')" in index
+    # the row button arms the picker with that row ticked; it doesn't discard alone
+    assert "startPick('pending','k1')" in index

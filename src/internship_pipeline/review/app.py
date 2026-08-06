@@ -170,45 +170,65 @@ class ReviewApp:
             "sheet_error": sheet_error,
         }
 
-    def discard(self, key: str) -> dict:
-        """Drop a job the human doesn't want, straight from the pending list.
+    def _set_status(self, key: str, status: str) -> tuple[bool, Optional[str]]:
+        """``(changed?, error)`` for one application — the shared discard/restore step.
 
-        Only ``pending_review`` applications qualify: they were never pushed to
-        the sheet (only reviewed ones are), so recording ``withdrawn`` in storage
-        is the whole job — nothing to delete remotely, and ``match_and_slice``
-        only ever prepares NEW jobs, so it can't come back. A reviewed
-        application already owns a sheet row, and that row is deleted by the
-        sheet's own Status dropdown (``sync_tracker``); doing it here would leave
-        the row orphaned, so it is refused.
+        ``allowed_from`` lives in the callers: this only writes and reports.
         """
         app = self.storage.get_application(key)
         if app is None:
-            return {"error": "unknown application"}
-        if app.status == "withdrawn":
-            return {"ok": True, "status": app.status}  # idempotent (double-click)
-        if app.status != "pending_review":
-            return {
-                "error": (
-                    f"application is {app.status}, not pending — set its Status to "
-                    "'withdrawn' in the tracker sheet so the row is removed too"
-                )
-            }
-        app.status = "withdrawn"
+            return False, "unknown application"
+        if app.status == status:
+            return False, None  # already there (double-click / re-submitted batch)
+        if status == "withdrawn" and app.status != "pending_review":
+            # A reviewed application already owns a sheet row, and that row is
+            # deleted by the sheet's own Status dropdown (`sync_tracker`); doing
+            # it here would orphan the row.
+            return False, (
+                f"{app.company_name} — {app.title}: is {app.status}, not pending. Set "
+                "its Status to 'withdrawn' in the tracker sheet so the row goes too."
+            )
+        if status == "pending_review" and app.status != "withdrawn":
+            return False, f"{app.company_name} — {app.title}: is {app.status}; nothing to restore."
+        app.status = status
         self.storage.save_application(app)
-        log.info("application discarded", extra={"key": key, "company": app.company_name})
-        return {"ok": True, "status": app.status}
+        log.info(
+            "application status set by review app",
+            extra={"key": key, "status": status, "company": app.company_name},
+        )
+        return True, None
 
-    def restore(self, key: str) -> dict:
-        """Undo a discard: back to ``pending_review`` (the review flow untouched)."""
-        app = self.storage.get_application(key)
-        if app is None:
-            return {"error": "unknown application"}
-        if app.status not in ("withdrawn", "pending_review"):
-            return {"error": f"application is {app.status}; nothing to restore"}
-        app.status = "pending_review"
-        self.storage.save_application(app)
-        log.info("application restored", extra={"key": key, "company": app.company_name})
-        return {"ok": True, "status": app.status}
+    def discard(self, keys: list[str]) -> dict:
+        """Drop jobs the human doesn't want, straight from the pending list.
+
+        Batched: the UI picks a set of rows and sends them in one request. Only
+        ``pending_review`` applications qualify — they were never pushed to the
+        sheet (only reviewed ones are), so recording ``withdrawn`` in storage is
+        the whole job, and ``match_and_slice`` only ever prepares NEW jobs, so
+        they can't come back.
+
+        Partial failure is fine and reported: every key is attempted, the ones
+        that couldn't be discarded come back in ``errors`` for the UI to show.
+        """
+        discarded = 0
+        errors: list[str] = []
+        for key in dict.fromkeys(keys):
+            changed, error = self._set_status(key, "withdrawn")
+            discarded += int(changed)
+            if error:
+                errors.append(error)
+        return {"ok": not errors, "discarded": discarded, "errors": errors}
+
+    def restore(self, keys: list[str]) -> dict:
+        """Undo discards: back to ``pending_review`` (the review flow untouched)."""
+        restored = 0
+        errors: list[str] = []
+        for key in dict.fromkeys(keys):
+            changed, error = self._set_status(key, "pending_review")
+            restored += int(changed)
+            if error:
+                errors.append(error)
+        return {"ok": not errors, "restored": restored, "errors": errors}
 
     # --- page builds --------------------------------------------------------
 
@@ -218,21 +238,34 @@ class ReviewApp:
         discarded = self.storage.list_applications(status="withdrawn")
 
         def rows(apps: list[Application], mode: str) -> str:
+            """One table body. ``pending``/``discarded`` rows are pickable (the bulk
+            Discard/Restore bar reads their checkboxes); ``reviewed`` rows are not."""
+            pickable = mode in ("pending", "discarded")
             if not apps:
-                return '<tr><td colspan="5" class="empty">none</td></tr>'
+                return f'<tr><td colspan="{6 if pickable else 5}" class="empty">none</td></tr>'
             out = []
             for a in apps:
                 key = html.escape(a.dedupe_key)
+                pick = (
+                    f'<td class="pick"><input type="checkbox" class="rowpick" value="{key}" '
+                    f"onchange=\"updatePick('{mode}')\"></td>"
+                    if pickable
+                    else ""
+                )
                 if mode == "discarded":
-                    actions = f"<button class=\"secondary\" onclick=\"act('restore','{key}')\">Restore</button>"
+                    actions = (
+                        f"<button class=\"secondary rowbtn\" onclick=\"startPick('discarded','{key}')\">"
+                        "Restore</button>"
+                    )
                 else:
                     label = "Review" if mode == "pending" else "Reopen"
                     actions = f'<a class="btn" href="/review/{key}">{label}</a>'
                     if mode == "pending":
-                        # One click to drop a job outright: no CV to review, no
-                        # sheet round-trip through the Status dropdown.
+                        # Doesn't discard on the spot: it arms the bulk picker with
+                        # this row ticked, so triaging one job and triaging ten are
+                        # the same gesture.
                         actions += (
-                            f" <button class=\"danger\" onclick=\"act('discard','{key}')\">"
+                            f" <button class=\"danger rowbtn\" onclick=\"startPick('pending','{key}')\">"
                             "Discard</button>"
                         )
                 # Full extracted keyword list (~20): this is the human's triage
@@ -241,6 +274,7 @@ class ReviewApp:
                 kw = ", ".join(a.keywords)
                 out.append(
                     "<tr>"
+                    f"{pick}"
                     f"<td>{html.escape(a.company_name)}</td>"
                     f'<td><a href="{html.escape(a.url)}" target="_blank" rel="noopener">'
                     f"{html.escape(a.title)}</a></td>"
@@ -251,19 +285,44 @@ class ReviewApp:
                 )
             return "".join(out)
 
+        def section(apps: list[Application], mode: str, heading: str, verb: str, hint: str) -> str:
+            """A pickable list: heading, bulk bar (only when there's something to
+            pick), select-all header checkbox, rows."""
+            bar = (
+                _PICK_BAR.format(mode=mode, verb=verb, start=f"{verb} several…", hint=hint)
+                if apps
+                else ""
+            )
+            head = (
+                '<th class="pick"><input type="checkbox" class="allpick" '
+                f"onchange=\"toggleAll('{mode}', this)\"></th>{_LIST_HEAD}"
+            )
+            return _LIST_SECTION.format(
+                mode=mode, heading=heading, bar=bar, head=head, rows=rows(apps, mode)
+            )
+
         discarded_section = ""
         if discarded:
-            discarded_section = (
-                "<h2>Discarded ({n}) — never sent to the sheet</h2>"
-                "<table><tr><th>Company</th><th>Role</th><th>Fit</th><th>Keywords</th>"
-                "<th></th></tr>{rows}</table>"
-            ).format(n=len(discarded), rows=rows(discarded, "discarded"))
+            discarded_section = section(
+                discarded,
+                "discarded",
+                f"Discarded ({len(discarded)}) — never sent to the sheet",
+                "Restore",
+                "tick the ones to put back in the pending list",
+            )
 
         return _INDEX_TEMPLATE.format(
             css=_CSS,
             pending_count=len(pending),
             reviewed_count=len(reviewed),
-            pending_rows=rows(pending, "pending"),
+            pending_section=section(
+                pending,
+                "pending",
+                "Pending review",
+                "Discard",
+                "tick every job you want gone, then hit Discard",
+            ),
+            list_head=_LIST_HEAD,
             reviewed_rows=rows(reviewed, "reviewed"),
             discarded_section=discarded_section,
         )
@@ -377,6 +436,10 @@ class _Handler(BaseHTTPRequestHandler):
         data = self._read_json()
         key = str(data.get("key", ""))
         ids = [str(i) for i in data.get("ids", []) if isinstance(i, (str, int))]
+        # discard/restore act on a batch; a lone "key" still works (one-item batch).
+        keys = [str(k) for k in data.get("keys", []) if isinstance(k, (str, int))] or (
+            [key] if key else []
+        )
         if path == "/api/preview":
             self._json(self.app.preview(key, ids))
             return
@@ -384,10 +447,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(self.app.submit(key, ids))
             return
         if path == "/api/discard":
-            self._json(self.app.discard(key))
+            self._json(self.app.discard(keys))
             return
         if path == "/api/restore":
-            self._json(self.app.restore(key))
+            self._json(self.app.restore(keys))
             return
         self._json({"error": "not found"}, status=404)
 
@@ -462,9 +525,21 @@ a.btn, button { display: inline-block; background: #1e64b4; color: #fff; border:
   text-decoration: none; }
 button.secondary { background: #eef1f4; color: #1c2733; }
 button.danger { background: #fff; color: #c0392b; border: 1px solid #e6c3bd; }
-button.danger:hover { background: #fdf0ee; }
+button.danger:hover:enabled { background: #fdf0ee; }
 button:disabled { opacity: .5; cursor: default; }
 td.act { white-space: nowrap; }
+/* Bulk picking: checkboxes and the confirm/cancel pair only exist once the human
+   arms the bar, so an unarmed list looks exactly like a plain table. */
+.bar { display: flex; gap: 10px; align-items: center; margin: 0 0 8px; }
+.bar .hint { color: #8a97a5; font-size: 13px; }
+.bar .picking-only { display: none; gap: 10px; align-items: center; }
+section.list.picking .bar .picking-only { display: flex; }
+section.list.picking .bar .startpick, section.list.picking .rowbtn { display: none; }
+section.list.picking .bar { position: sticky; top: 0; z-index: 2; background: #f6f7f9;
+  padding: 8px 0; border-bottom: 1px solid #e3e7ec; }
+th.pick, td.pick { display: none; width: 34px; }
+section.list.picking th.pick, section.list.picking td.pick { display: table-cell; }
+input.rowpick, input.allpick { width: 16px; height: 16px; cursor: pointer; }
 h2 { font-size: 15px; margin: 22px 0 8px; }
 .cols { display: flex; gap: 20px; align-items: flex-start; }
 .cols form { flex: 1 1 46%; min-width: 380px; }
@@ -495,26 +570,79 @@ p.note { color: #8a5b00; background: #fff7e0; border: 1px solid #f0e0ae;
 .chips { color: #5b6b7b; font-size: 13px; }
 """
 
+_LIST_HEAD = "<th>Company</th><th>Role</th><th>Fit</th><th>Keywords</th><th></th>"
+
+# The bulk bar for one list. Collapsed to a single "… several…" button until the
+# human arms it (see the .picking CSS), so the page reads the same as before.
+_PICK_BAR = """<div class="bar">
+  <button class="danger startpick" onclick="startPick('{mode}')">{start}</button>
+  <span class="picking-only">
+    <button class="danger" id="{mode}-apply" onclick="applyPick('{mode}')">{verb} 0</button>
+    <button class="secondary" onclick="cancelPick('{mode}')">Cancel</button>
+    <span class="hint">{hint}</span>
+  </span>
+</div>"""
+
+_LIST_SECTION = """<section class="list" id="sec-{mode}">
+<h2>{heading}</h2>
+{bar}
+<table><tr>{head}</tr>
+{rows}</table>
+</section>"""
+
 _INDEX_TEMPLATE = """<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>CV Review</title><style>{css}</style></head>
 <body>
 <header class="top"><h1>CV Review — {pending_count} pending · {reviewed_count} reviewed</h1></header>
 <main>
-<h2>Pending review</h2>
-<table><tr><th>Company</th><th>Role</th><th>Fit</th><th>Keywords</th><th></th></tr>
-{pending_rows}</table>
+{pending_section}
 <h2>Reviewed (already on the sheet)</h2>
-<table><tr><th>Company</th><th>Role</th><th>Fit</th><th>Keywords</th><th></th></tr>
+<table><tr>{list_head}</tr>
 {reviewed_rows}</table>
 {discarded_section}
 <script>
-async function act(what, key) {{
-  if (what === 'discard' &&
-      !confirm('Discard this job? It never reaches the sheet (restorable below).')) return;
-  const resp = await fetch('/api/' + what, {{method: 'POST',
-    headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{key: key}})}});
+const VERB = {{pending: 'Discard', discarded: 'Restore'}};
+const ENDPOINT = {{pending: '/api/discard', discarded: '/api/restore'}};
+function sec(mode) {{ return document.getElementById('sec-' + mode); }}
+function boxes(mode) {{ return Array.from(sec(mode).querySelectorAll('input.rowpick')); }}
+function picked(mode) {{ return boxes(mode).filter(b => b.checked); }}
+function updatePick(mode) {{
+  const all = boxes(mode), n = picked(mode).length;
+  const apply = document.getElementById(mode + '-apply');
+  apply.textContent = VERB[mode] + ' ' + n;
+  apply.disabled = n === 0;
+  const master = sec(mode).querySelector('input.allpick');
+  master.checked = n > 0 && n === all.length;
+  master.indeterminate = n > 0 && n < all.length;
+}}
+function startPick(mode, key) {{
+  sec(mode).classList.add('picking');
+  if (key) {{
+    const box = boxes(mode).find(b => b.value === key);
+    if (box) box.checked = true;
+  }}
+  updatePick(mode);
+}}
+function cancelPick(mode) {{
+  boxes(mode).forEach(b => {{ b.checked = false; }});
+  sec(mode).classList.remove('picking');
+  updatePick(mode);
+}}
+function toggleAll(mode, el) {{
+  boxes(mode).forEach(b => {{ b.checked = el.checked; }});
+  updatePick(mode);
+}}
+async function applyPick(mode) {{
+  const keys = picked(mode).map(b => b.value);
+  if (!keys.length) return;
+  if (mode === 'pending' && !confirm('Discard ' + keys.length + ' job(s)? They never reach '
+      + 'the sheet, and stay restorable in the discarded list.')) return;
+  const btn = document.getElementById(mode + '-apply');
+  btn.disabled = true; btn.textContent = 'Working\\u2026';
+  const resp = await fetch(ENDPOINT[mode], {{method: 'POST',
+    headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{keys: keys}})}});
   const data = await resp.json();
-  if (data.error) {{ alert(data.error); return; }}
+  if (data.errors && data.errors.length) alert(data.errors.join('\\n\\n'));
   location.reload();
 }}
 </script>

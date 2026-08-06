@@ -130,13 +130,17 @@ finalizes the CV, uploads it to Drive (when configured), marks the application
 `reviewed`, and pushes its row to the tracker sheet. **Unreviewed applications never
 reach the sheet**; stale ones simply expire out of the queue.
 
-A role you don't want doesn't need any of that: hit *Discard* on its pending row and
-it is marked `withdrawn` in storage on the spot — no CV review, no sheet round-trip
-through the Status dropdown, and it can't come back (only *new* jobs get
-applications). Discarded rows collect in their own list on the same page with a
-*Restore* button. Discard is refused for an application that is already `reviewed`,
+Roles you don't want need none of that. *Discard several…* (or the *Discard* button
+on any pending row, which arms the same picker with that row ticked) turns the
+pending list into a checklist: tick every job you want gone — or the select-all box
+in the header — then hit *Discard N* at the top and they all go in one request. They
+are marked `withdrawn` in storage: no CV review, no sheet round-trip through the
+Status dropdown, and they can't come back (only *new* jobs get applications).
+Discarded rows collect in their own list on the same page with the same bulk picker
+for *Restore*. Discard is refused for an application that is already `reviewed`,
 because that one owns a sheet row — remove it the usual way, via the sheet's Status
-dropdown, so the row goes with it.
+dropdown, so the row goes with it. One bad key never sinks the batch: the rest go
+through and the page reports what didn't.
 
 Every heavy dependency (`sentence-transformers`, `anthropic`, `pypdf`) is
 lazy-imported and optional — the pipeline always runs with zero credentials. Install
