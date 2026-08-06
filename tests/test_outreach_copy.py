@@ -38,6 +38,26 @@ def test_is_grounded_gate():
     assert is_grounded("Built Rust pipeline", vocab) is False
 
 
+def test_is_grounded_accepts_inflections_of_grounded_words():
+    """A different surface form of an allowed word is the same claim.
+
+    Rejection is all-or-nothing per field, so "pipelines" failing against a
+    source that said "pipeline" throws away an otherwise faithful draft.
+    """
+    vocab = {"build", "python", "pipeline", "automate"}
+    assert is_grounded("Building Python pipelines", vocab) is True
+    assert is_grounded("Automation in Python", vocab) is True
+    # Loosening the FORM must not loosen the FACTS.
+    assert is_grounded("Building Rust pipelines", vocab) is False
+
+
+def test_is_grounded_splits_compounds_on_both_sides():
+    assert is_grounded("their auto-drafting of emails", {"auto-drafts", "email"}) is True
+    assert is_grounded("cell level imaging", {"cell-level", "image"}) is True
+    # One unknown half still fails the whole compound.
+    assert is_grounded("auth-backed drafts", {"auto-drafts"}) is False
+
+
 def test_deterministic_copy_is_real_and_references_company_and_bullets():
     resume, bullets = _setup()
     content = draft_outreach_copy(job=JOB, contact=CONTACT, keywords=KEYWORDS,

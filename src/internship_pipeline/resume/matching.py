@@ -93,6 +93,47 @@ def content_tokens(text: str) -> set[str]:
     return {t for t in tokenize(text) if t not in STOPWORDS and len(t) > 1}
 
 
+# Suffix -> what to leave behind, longest first. Deliberately crude: this is a
+# CANONICALIZER, not a linguist's stemmer. It is only ever applied to both sides
+# of a comparison, so "automation" and "automate" collapsing to the (nonsense)
+# "automat" is a success — all that matters is that inflections of one word agree.
+_SUFFIXES: tuple[tuple[str, str], ...] = (
+    ("ization", "ize"), ("ations", "ate"), ("ation", "ate"), ("ments", "ment"),
+    ("ilities", "le"), ("ility", "le"), ("ness", ""), ("able", ""), ("ible", ""),
+    ("ions", ""), ("ion", ""), ("ing", ""), ("ers", ""), ("ors", ""), ("ed", ""),
+    ("ly", ""), ("er", ""),
+)
+_MIN_STEM = 4
+
+
+def stem(token: str) -> str:
+    """Collapse a token to a form its own inflections share.
+
+    Grounding compares the words in an LLM draft against the words in the source
+    material. Without this, a model that writes the perfectly faithful "their
+    auto-drafting of reorder emails" is rejected because the hook said
+    "auto-drafts" — and rejection throws away the whole draft. Matching on the
+    stem admits a different SURFACE FORM of an already-allowed word; it never
+    admits a new fact.
+    """
+    tok = token
+    if tok.endswith("sses"):
+        tok = tok[:-2]
+    elif tok.endswith("ies") and len(tok) > _MIN_STEM:
+        tok = tok[:-3] + "y"
+    elif tok.endswith("s") and not tok.endswith(("ss", "us", "is")) and len(tok) > 2:
+        tok = tok[:-1]
+    for suffix, replacement in _SUFFIXES:
+        if tok.endswith(suffix) and len(tok) - len(suffix) >= _MIN_STEM:
+            tok = tok[: -len(suffix)] + replacement
+            break
+    if len(tok) > 3 and tok[-1] == tok[-2] and tok[-1].isalpha():
+        tok = tok[:-1]  # "running" -> "runn" -> "run"
+    if len(tok) > _MIN_STEM and tok.endswith("e"):
+        tok = tok[:-1]  # "pipeline"/"pipelines" and "sequence"/"sequencing" agree
+    return tok
+
+
 def job_text(job: Job) -> str:
     """Embeddable text for a job: the real description if present, else title/company."""
     parts = [job.title, job.company_name, *job.locations]

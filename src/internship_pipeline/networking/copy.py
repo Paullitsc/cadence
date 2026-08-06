@@ -143,6 +143,55 @@ _CURIOSITY_VOCAB: frozenset[str] = frozenset(
     """.split()
 )
 
+# Plain conversational English. These are not "networking" or "curiosity" words —
+# they are the connective tissue any 120-word message needs ("rather than", "every
+# time", "works", "through"), and every one of them was observed rejecting a real,
+# faithful draft. Same admission rule as the lists above: a word belongs here iff it
+# cannot BY ITSELF constitute a fabricated fact. That is why the generic nouns of
+# software conversation are here ("tools", "systems", "workflow" — true of every
+# company) while the qualifiers that make a claim are NOT ("low-latency",
+# "distributed", "real-time", "speedup"): those must still come from the blurb, the
+# hook, the background, or a real bullet.
+_PLAIN_ENGLISH_VOCAB: frozenset[str] = frozenset(
+    """
+    actually eventually entirely especially honestly obviously usually typically
+    rather versus instead whether else since though although while through across
+    every each both either neither anything something nothing everything someone
+    anyone myself yourself themselves person people folks
+    comes came come gets getting got goes went made makes making does doing done
+    need needs needed use uses used using try trying tried keep keeping kept
+    turn turning turned hold holds held stay stays stayed sits sit sitting
+    decide decides deciding decision decisions judgment guess guessing
+    step steps stage stages piece pieces layer layers part parts point points
+    task tasks job jobs project projects tool tools system systems workflow workflows
+    process processes practice practices pattern patterns detail details
+    change changes changing shift shifts move moves moving
+    scale scaling complexity quality reliability trust safety security
+    insight insights lack noise manual routine boring tedious repetitive
+    hard harder easier faster slower better worse bigger smaller longer shorter
+    relative relatively roughly mostly largely partly fairly pretty quite
+    worth attention concern concerns issue issues risk risks tradeoff tradeoffs
+    describe described description mention mentioned saw seen say says said
+    rethink rewrite revisit reconsider approach approaches
+    weeks days months couple lately soon nowadays
+    cs compeng comp eng undergrad undergraduate degree program
+    one two three single separate different same enough only still even far
+    toward behind above beneath underneath straight normal everyday ordinary
+    possible impossible likely unlikely clever neat elegant messy raw
+    human humans manually automatically end-to-end
+    bet act acts accept accepts review reviews flag flags cut cuts land lands
+    leave leaves leaving happen happens happened imagine imagined consider
+    considered decided understand understands treat treating
+    friction shortcut busywork overhead guardrail guardrails
+    along without within itself themselves first last next existing surrounding
+    context idea ideas gut instinct sense place places source sources version
+    versions variety kind kinds feature features logic reason reasons
+    check checking checked spend spending deal dealt handle handled
+    structure structuring break breaking transform transformed shift shifting
+    day-to-day end-of-day dramatically significantly meaningfully
+    """.split()
+)
+
 # The one deliberate NUMERIC exception. Numbers are otherwise exactly what the
 # grounding check exists to catch (fabricated metrics), but a call ask reads far
 # better with a concrete duration — and "15 minutes" is the ask in every
@@ -273,6 +322,7 @@ def networking_vocab(person: Person, resume: MasterResume, top_bullets: list[Bul
         set(_BOILERPLATE_VOCAB)
         | set(_NETWORKING_VOCAB)
         | set(_CURIOSITY_VOCAB)
+        | set(_PLAIN_ENGLISH_VOCAB)
         | set(_DURATION_VOCAB)
     )
     vocab |= content_tokens(person.company_name)

@@ -127,13 +127,46 @@ def _salvage_truncated_object(text: str) -> Optional[dict]:
     return None
 
 
+_JSON_CONTROL_ESCAPES = {"\n": "\\n", "\r": "\\r", "\t": "\\t"}
+
+
+def _escape_raw_control_chars(text: str) -> str:
+    """Escape literal newlines/tabs that appear INSIDE a JSON string literal.
+
+    Strict JSON forbids raw control characters in strings, and a model asked for
+    multi-paragraph prose in a JSON field will sometimes emit real line breaks
+    instead of ``\\n``. The response is otherwise perfectly well-formed, so
+    rejecting it costs a whole draft (networking copy then silently ships the
+    deterministic template). Only characters between an opening and closing quote
+    are touched, so the JSON's own layout is left exactly as it was.
+    """
+    out: list[str] = []
+    in_str = False
+    escaped = False
+    for ch in text:
+        if escaped:
+            escaped = False
+        elif in_str:
+            if ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_str = False
+            elif ch in _JSON_CONTROL_ESCAPES:
+                out.append(_JSON_CONTROL_ESCAPES[ch])
+                continue
+        elif ch == '"':
+            in_str = True
+        out.append(ch)
+    return "".join(out)
+
+
 def parse_json_object(text: str) -> dict:
     """Best-effort parse of a JSON object from an LLM text response.
 
     Tolerates ``` fences and surrounding prose by extracting the first balanced
-    ``{...}`` span, and salvages the complete leading elements of a response
-    truncated at ``max_tokens``. Raises ``ValueError`` if nothing parseable is
-    found.
+    ``{...}`` span, repairs raw line breaks inside string values, and salvages the
+    complete leading elements of a response truncated at ``max_tokens``. Raises
+    ``ValueError`` if nothing parseable is found.
     """
     candidates = [text.strip()]
     fenced = _FENCE_RE.search(text)
@@ -143,6 +176,13 @@ def parse_json_object(text: str) -> dict:
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
         candidates.append(text[start : end + 1])
+    # Same candidates once more with raw control characters escaped — tried after
+    # the untouched ones so a valid response never goes through the repair.
+    candidates += [
+        repaired
+        for repaired in (_escape_raw_control_chars(c) for c in list(candidates))
+        if repaired not in candidates
+    ]
     for candidate in candidates:
         try:
             obj = json.loads(candidate)
@@ -150,7 +190,9 @@ def parse_json_object(text: str) -> dict:
             continue
         if isinstance(obj, dict):
             return obj
-    salvaged = _salvage_truncated_object(text)
+    salvaged = _salvage_truncated_object(text) or _salvage_truncated_object(
+        _escape_raw_control_chars(text)
+    )
     if salvaged is not None:
         log.warning(
             "model response was not valid JSON; salvaged its complete leading elements",

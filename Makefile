@@ -1,4 +1,4 @@
-.PHONY: install install-pip test lint fmt run review roster-sync roster-push clean
+.PHONY: install install-pip test lint fmt run review redraft redraft-preview roster-sync roster-push clean
 
 install:        ## Create venv + install dev deps (uv, recommended)
 	uv sync --extra dev
@@ -20,6 +20,15 @@ run:
 
 review:         ## Local CV review app (pick bullets, preview the page, submit to sheet)
 	uv run python -m internship_pipeline.review
+
+# The ladder drafts each artifact once, so rows already waiting on you keep the
+# copy they were written with. Re-run drafting over them after improving a hook,
+# a background, or the prompt itself — then roster-sync pushes the new text out.
+redraft-preview:  ## Show what re-drafting the in-flight rows would produce
+	uv run python -m internship_pipeline.networking.redraft --dry-run
+
+redraft:        ## Re-draft every connect/message already waiting on you
+	uv run python -m internship_pipeline.networking.redraft
 
 # networking_targets.yaml is git-ignored (real names, public repo), so your local
 # copy is the master and CI reads it from the NETWORKING_TARGETS_YAML secret.

@@ -17,16 +17,21 @@ employers, or projects therefore cannot reach a drafted message.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 
 from ..logging_config import get_logger
 from ..models import Job
 from ..resume.llm import CompleteFn, resume_system_blocks
-from ..resume.matching import content_tokens
+from ..resume.matching import content_tokens, stem
 from ..resume.models import BulletRef, MasterResume
 from .contacts import Contact
 
 log = get_logger(__name__)
+
+# Compounds a model builds out of grounded words: "cell-level", "auto-drafting",
+# "read/write". Split only on the joiners — "c++"/"node.js" must stay whole.
+_COMPOUND_RE = re.compile(r"[-/]")
 
 LINKEDIN_NOTE_LIMIT = 300  # LinkedIn connection-request notes are capped at 300 chars
 
@@ -175,8 +180,36 @@ def allowed_vocab(
 
 
 def is_grounded(text: str, vocab: set[str]) -> bool:
-    """True if every content token in ``text`` is present in the allowed ``vocab``."""
-    ungrounded = content_tokens(text) - vocab
+    """True if every content token in ``text`` is covered by the allowed ``vocab``.
+
+    Coverage is checked in three passes, each admitting a different SURFACE FORM of
+    an already-allowed word and never a new fact:
+
+    1. the exact token;
+    2. its stem, against the stemmed vocabulary — "auto-drafting" is the same claim
+       as the hook's "auto-drafts", and rejecting it silently throws away the whole
+       draft in favour of the deterministic template;
+    3. for a hyphen/slash compound, every one of its parts ("cell-level" needs both
+       "cell" and "level"). A compound with one unknown part still fails, which is
+       what keeps "auth-backed" out.
+    """
+    unknown = content_tokens(text) - vocab
+    if not unknown:
+        return True
+    # Compounds are split on BOTH sides: the hook's "auto-drafts" is what makes
+    # the draft's "drafts" a known word, not a new one.
+    stems = set()
+    for word in vocab:
+        stems.add(stem(word))
+        stems.update(stem(p) for p in _COMPOUND_RE.split(word) if len(p) > 1)
+
+    def covered(token: str) -> bool:
+        if token in vocab or stem(token) in stems:
+            return True
+        parts = [p for p in _COMPOUND_RE.split(token) if len(p) > 1]
+        return len(parts) > 1 and all(p in vocab or stem(p) in stems for p in parts)
+
+    ungrounded = {t for t in unknown if not covered(t)}
     if ungrounded:
         log.warning("rejected ungrounded outreach text", extra={"ungrounded_tokens": sorted(ungrounded)})
         return False

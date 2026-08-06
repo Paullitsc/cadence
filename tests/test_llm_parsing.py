@@ -49,6 +49,27 @@ def test_salvages_truncation_with_escapes_and_nested_brackets():
     assert obj["b"] == [1, {"c": 2}]
 
 
+def test_repairs_raw_line_breaks_inside_a_string_value():
+    """A multi-paragraph field written with real newlines instead of ``\\n``.
+
+    Strict JSON forbids raw control characters in strings, so the whole response
+    was rejected — for networking copy that silently ships the deterministic
+    template instead of the drafted message.
+    """
+    text = '{"message": "Hi Jane,\n\nThanks for the connect!\n\nPaul"}'
+    assert parse_json_object(text) == {
+        "message": "Hi Jane,\n\nThanks for the connect!\n\nPaul"
+    }
+
+
+def test_repair_leaves_valid_escapes_alone():
+    text = '{"message": "line one\\nline two", "path": "C:\\\\tmp"}'
+    assert parse_json_object(text) == {
+        "message": "line one\nline two",
+        "path": "C:\\tmp",
+    }
+
+
 def test_unsalvageable_text_still_raises():
     with pytest.raises(ValueError):
         parse_json_object("I cannot produce JSON for this request.")
