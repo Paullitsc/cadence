@@ -130,6 +130,14 @@ finalizes the CV, uploads it to Drive (when configured), marks the application
 `reviewed`, and pushes its row to the tracker sheet. **Unreviewed applications never
 reach the sheet**; stale ones simply expire out of the queue.
 
+A role you don't want doesn't need any of that: hit *Discard* on its pending row and
+it is marked `withdrawn` in storage on the spot — no CV review, no sheet round-trip
+through the Status dropdown, and it can't come back (only *new* jobs get
+applications). Discarded rows collect in their own list on the same page with a
+*Restore* button. Discard is refused for an application that is already `reviewed`,
+because that one owns a sheet row — remove it the usual way, via the sheet's Status
+dropdown, so the row goes with it.
+
 Every heavy dependency (`sentence-transformers`, `anthropic`, `pypdf`) is
 lazy-imported and optional — the pipeline always runs with zero credentials. Install
 what you want with the extras: `uv sync --extra phase2` (or `--extra ml` / `--extra

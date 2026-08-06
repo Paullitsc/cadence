@@ -4,12 +4,14 @@ Single-threaded on purpose: requests are quick page builds or one LaTeX compile,
 the app is single-user local tooling, and serializing requests keeps SQLite and
 the preview files race-free. Endpoints:
 
-    GET  /                    pending + reviewed application lists
+    GET  /                    pending + reviewed + discarded application lists
     GET  /review/<key>        the selection UI for one application
     POST /api/preview         {key, ids} → compile the selection, report pages
     GET  /preview/<key>.pdf   the last compiled preview for that application
     POST /api/submit          {key, ids} → finalize: render, Drive upload,
                               storage update (status → "reviewed"), sheet row
+    POST /api/discard         {key} → status "withdrawn" without ever reviewing
+    POST /api/restore         {key} → a discarded application back to pending
 
 Previews compile EXACTLY the human's selection (no auto-trim) so the page count
 shown is the truth about their choice; the submit likewise renders what was
@@ -168,17 +170,71 @@ class ReviewApp:
             "sheet_error": sheet_error,
         }
 
+    def discard(self, key: str) -> dict:
+        """Drop a job the human doesn't want, straight from the pending list.
+
+        Only ``pending_review`` applications qualify: they were never pushed to
+        the sheet (only reviewed ones are), so recording ``withdrawn`` in storage
+        is the whole job — nothing to delete remotely, and ``match_and_slice``
+        only ever prepares NEW jobs, so it can't come back. A reviewed
+        application already owns a sheet row, and that row is deleted by the
+        sheet's own Status dropdown (``sync_tracker``); doing it here would leave
+        the row orphaned, so it is refused.
+        """
+        app = self.storage.get_application(key)
+        if app is None:
+            return {"error": "unknown application"}
+        if app.status == "withdrawn":
+            return {"ok": True, "status": app.status}  # idempotent (double-click)
+        if app.status != "pending_review":
+            return {
+                "error": (
+                    f"application is {app.status}, not pending — set its Status to "
+                    "'withdrawn' in the tracker sheet so the row is removed too"
+                )
+            }
+        app.status = "withdrawn"
+        self.storage.save_application(app)
+        log.info("application discarded", extra={"key": key, "company": app.company_name})
+        return {"ok": True, "status": app.status}
+
+    def restore(self, key: str) -> dict:
+        """Undo a discard: back to ``pending_review`` (the review flow untouched)."""
+        app = self.storage.get_application(key)
+        if app is None:
+            return {"error": "unknown application"}
+        if app.status not in ("withdrawn", "pending_review"):
+            return {"error": f"application is {app.status}; nothing to restore"}
+        app.status = "pending_review"
+        self.storage.save_application(app)
+        log.info("application restored", extra={"key": key, "company": app.company_name})
+        return {"ok": True, "status": app.status}
+
     # --- page builds --------------------------------------------------------
 
     def index_html(self) -> str:
         pending = self.storage.list_applications(status="pending_review")
         reviewed = self.storage.list_applications(status="reviewed")
+        discarded = self.storage.list_applications(status="withdrawn")
 
-        def rows(apps: list[Application], action: str) -> str:
+        def rows(apps: list[Application], mode: str) -> str:
             if not apps:
                 return '<tr><td colspan="5" class="empty">none</td></tr>'
             out = []
             for a in apps:
+                key = html.escape(a.dedupe_key)
+                if mode == "discarded":
+                    actions = f"<button class=\"secondary\" onclick=\"act('restore','{key}')\">Restore</button>"
+                else:
+                    label = "Review" if mode == "pending" else "Reopen"
+                    actions = f'<a class="btn" href="/review/{key}">{label}</a>'
+                    if mode == "pending":
+                        # One click to drop a job outright: no CV to review, no
+                        # sheet round-trip through the Status dropdown.
+                        actions += (
+                            f" <button class=\"danger\" onclick=\"act('discard','{key}')\">"
+                            "Discard</button>"
+                        )
                 # Full extracted keyword list (~20): this is the human's triage
                 # view, and seeing what the JD wants is how they pick what to
                 # customize — truncating it hid the signal.
@@ -190,17 +246,26 @@ class ReviewApp:
                     f"{html.escape(a.title)}</a></td>"
                     f"<td>{a.fit_score:.2f}</td>"
                     f"<td class=kw>{html.escape(kw)}</td>"
-                    f'<td><a class="btn" href="/review/{html.escape(a.dedupe_key)}">{action}</a></td>'
+                    f"<td class=act>{actions}</td>"
                     "</tr>"
                 )
             return "".join(out)
+
+        discarded_section = ""
+        if discarded:
+            discarded_section = (
+                "<h2>Discarded ({n}) — never sent to the sheet</h2>"
+                "<table><tr><th>Company</th><th>Role</th><th>Fit</th><th>Keywords</th>"
+                "<th></th></tr>{rows}</table>"
+            ).format(n=len(discarded), rows=rows(discarded, "discarded"))
 
         return _INDEX_TEMPLATE.format(
             css=_CSS,
             pending_count=len(pending),
             reviewed_count=len(reviewed),
-            pending_rows=rows(pending, "Review"),
-            reviewed_rows=rows(reviewed, "Reopen"),
+            pending_rows=rows(pending, "pending"),
+            reviewed_rows=rows(reviewed, "reviewed"),
+            discarded_section=discarded_section,
         )
 
     def review_html(self, key: str) -> Optional[str]:
@@ -231,6 +296,11 @@ class ReviewApp:
             status_note = (
                 '<p class="note">Already reviewed — submitting again re-renders and '
                 "re-syncs this application.</p>"
+            )
+        elif app.status == "withdrawn":
+            status_note = (
+                '<p class="note">Discarded from the pending list — submitting anyway '
+                "reviews it and puts it back on the sheet.</p>"
             )
         return _REVIEW_TEMPLATE.format(
             css=_CSS,
@@ -313,6 +383,12 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/api/submit":
             self._json(self.app.submit(key, ids))
             return
+        if path == "/api/discard":
+            self._json(self.app.discard(key))
+            return
+        if path == "/api/restore":
+            self._json(self.app.restore(key))
+            return
         self._json({"error": "not found"}, status=404)
 
 
@@ -385,7 +461,10 @@ a.btn, button { display: inline-block; background: #1e64b4; color: #fff; border:
   border-radius: 6px; padding: 7px 14px; font-size: 14px; cursor: pointer;
   text-decoration: none; }
 button.secondary { background: #eef1f4; color: #1c2733; }
+button.danger { background: #fff; color: #c0392b; border: 1px solid #e6c3bd; }
+button.danger:hover { background: #fdf0ee; }
 button:disabled { opacity: .5; cursor: default; }
+td.act { white-space: nowrap; }
 h2 { font-size: 15px; margin: 22px 0 8px; }
 .cols { display: flex; gap: 20px; align-items: flex-start; }
 .cols form { flex: 1 1 46%; min-width: 380px; }
@@ -427,6 +506,18 @@ _INDEX_TEMPLATE = """<!DOCTYPE html>
 <h2>Reviewed (already on the sheet)</h2>
 <table><tr><th>Company</th><th>Role</th><th>Fit</th><th>Keywords</th><th></th></tr>
 {reviewed_rows}</table>
+{discarded_section}
+<script>
+async function act(what, key) {{
+  if (what === 'discard' &&
+      !confirm('Discard this job? It never reaches the sheet (restorable below).')) return;
+  const resp = await fetch('/api/' + what, {{method: 'POST',
+    headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{key: key}})}});
+  const data = await resp.json();
+  if (data.error) {{ alert(data.error); return; }}
+  location.reload();
+}}
+</script>
 </main>
 </body></html>
 """

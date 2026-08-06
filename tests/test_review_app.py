@@ -169,3 +169,39 @@ def test_pages_render_html(review_app):
     page = review_app.review_html("k1")
     assert "Backend Intern" in page and "AI pick" in page
     assert review_app.review_html("missing") is None
+
+
+# --- ReviewApp.discard / restore ------------------------------------------------------
+def test_discard_marks_withdrawn_without_reviewing(review_app):
+    review_app.storage.save_application(_app(status="pending_review"))
+
+    assert review_app.discard("k1") == {"ok": True, "status": "withdrawn"}
+    stored = review_app.storage.get_application("k1")
+    assert stored.status == "withdrawn"
+    assert not stored.reviewed_at and not stored.final_bullets  # never reviewed
+    assert review_app.discard("k1")["ok"] is True  # idempotent (double-click)
+
+    # gone from the pending list, listed as discarded with a Restore button
+    index = review_app.index_html()
+    assert "0 pending" in index
+    assert "Discarded (1)" in index and "Restore" in index
+
+
+def test_discard_refuses_a_reviewed_application(review_app):
+    """It already owns a sheet row — only the sheet's Status dropdown removes that."""
+    review_app.storage.save_application(_app(status="reviewed"))
+    result = review_app.discard("k1")
+    assert "error" in result and "tracker sheet" in result["error"]
+    assert review_app.storage.get_application("k1").status == "reviewed"
+
+
+def test_restore_puts_a_discarded_application_back(review_app):
+    review_app.storage.save_application(_app(status="withdrawn"))
+    assert review_app.restore("k1") == {"ok": True, "status": "pending_review"}
+    assert review_app.storage.get_application("k1").status == "pending_review"
+    assert "1 pending" in review_app.index_html()
+
+
+def test_discard_and_restore_reject_unknown_applications(review_app):
+    assert "error" in review_app.discard("nope")
+    assert "error" in review_app.restore("nope")

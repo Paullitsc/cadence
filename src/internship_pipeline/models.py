@@ -139,8 +139,9 @@ class Application(BaseModel):
     # pending_review -> reviewed (human finalized the CV in the review app; only
     # then does the row reach the tracker sheet) | expired | rejected/withdrawn
     # (human set the sheet row's Status dropdown — the sync removed the row and
-    # recorded that status, which keeps it from ever coming back). Never
-    # auto-submitted.
+    # recorded that status, which keeps it from ever coming back; "withdrawn" is
+    # also what the review app's Discard sets on a pending application, which has
+    # no sheet row to remove). Never auto-submitted.
     status: str = "pending_review"
 
 
