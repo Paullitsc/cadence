@@ -68,6 +68,22 @@ def posted_within_days(job: Job, days: int, *, now: Optional[datetime] = None) -
     return 0 <= (now - posted).total_seconds() <= days * 86400
 
 
+def posted_older_than(job: Job, days: int, *, now: Optional[datetime] = None) -> bool:
+    """True if the role was posted more than ``days`` days ago.
+
+    A job with no parseable ``date_posted`` is never treated as stale by age
+    (unknown age isn't old age) — mirrors ``posted_within_days``'s "unknown ->
+    False" stance.
+    """
+    if days <= 0:
+        return False
+    posted = _parse_posted(job.date_posted)
+    if posted is None:
+        return False
+    now = now or datetime.now(timezone.utc)
+    return (now - posted).total_seconds() > days * 86400
+
+
 def favorability(job: Job, settings: Settings, *, now: Optional[datetime] = None) -> Favorability:
     """Decide whether a role is favorable, and say why."""
     if job.company_name.strip().lower() in settings.target_company_set:

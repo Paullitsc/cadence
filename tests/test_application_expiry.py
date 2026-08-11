@@ -75,6 +75,61 @@ def test_expiry_disabled_when_zero(tmp_path):
     assert app.status == "pending_review"
 
 
+def _seed_pending_application(db_path: str, *, date_posted) -> str:
+    store = SQLiteStore(db_path)
+    job = Job(company_name="Acme", title="Intern", url="https://x/2", date_posted=date_posted)
+    store.upsert_jobs([job])
+    store.save_application(
+        Application(
+            dedupe_key=job.dedupe_key(), company_name="Acme", title="Intern",
+            url="https://x/2", status="pending_review",
+        )
+    )
+    return job.dedupe_key()
+
+
+def test_old_posting_expires_even_if_recently_re_seen(tmp_path):
+    settings = _settings(tmp_path, application_expiry_days=0, posting_max_age_days=30)
+    dedupe_key = _seed_pending_application(settings.database_path, date_posted="2000-01-01")
+
+    ctx = StageContext(run_id="r1", settings=settings)
+    result = log_and_digest.run(ctx)
+
+    assert result.counts["applications_expired"] == 1
+    assert result.counts["applications_pending"] == 0
+
+    store = SQLiteStore(settings.database_path)
+    assert store.get_application(dedupe_key).status == "expired"
+
+
+def test_recent_posting_does_not_expire_by_age(tmp_path):
+    from datetime import datetime, timezone
+
+    settings = _settings(tmp_path, application_expiry_days=0, posting_max_age_days=30)
+    dedupe_key = _seed_pending_application(
+        settings.database_path, date_posted=datetime.now(timezone.utc).isoformat()
+    )
+
+    ctx = StageContext(run_id="r1", settings=settings)
+    result = log_and_digest.run(ctx)
+
+    assert result.counts["applications_expired"] == 0
+    store = SQLiteStore(settings.database_path)
+    assert store.get_application(dedupe_key).status == "pending_review"
+
+
+def test_posting_age_expiry_disabled_when_zero(tmp_path):
+    settings = _settings(tmp_path, application_expiry_days=0, posting_max_age_days=0)
+    dedupe_key = _seed_pending_application(settings.database_path, date_posted="2000-01-01")
+
+    ctx = StageContext(run_id="r1", settings=settings)
+    result = log_and_digest.run(ctx)
+
+    assert result.counts["applications_expired"] == 0
+    store = SQLiteStore(settings.database_path)
+    assert store.get_application(dedupe_key).status == "pending_review"
+
+
 def test_recently_seen_application_does_not_expire(tmp_path):
     settings = _settings(tmp_path, application_expiry_days=21)
     store = SQLiteStore(settings.database_path)

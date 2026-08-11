@@ -6,7 +6,12 @@ from datetime import datetime, timezone
 
 from internship_pipeline.config import Settings
 from internship_pipeline.models import Job
-from internship_pipeline.triggers import favorability, is_dual_trigger, posted_within_days
+from internship_pipeline.triggers import (
+    favorability,
+    is_dual_trigger,
+    posted_older_than,
+    posted_within_days,
+)
 
 NOW = datetime(2026, 7, 2, tzinfo=timezone.utc)
 
@@ -40,6 +45,23 @@ def test_missing_date_is_not_favorable():
 def test_epoch_seconds_date_parses():
     ts = str(int(datetime(2026, 6, 30, tzinfo=timezone.utc).timestamp()))
     assert posted_within_days(_job(date_posted=ts), 7, now=NOW) is True
+
+
+def test_posting_older_than_threshold_is_true():
+    # NOW is 2026-07-02; posted 2026-05-01 is 62 days back.
+    assert posted_older_than(_job(date_posted="2026-05-01"), 30, now=NOW) is True
+
+
+def test_posting_within_threshold_is_not_older():
+    assert posted_older_than(_job(date_posted="2026-06-30"), 30, now=NOW) is False
+
+
+def test_posted_older_than_missing_date_is_false():
+    assert posted_older_than(_job(date_posted=None), 30, now=NOW) is False
+
+
+def test_posted_older_than_disabled_when_zero_days():
+    assert posted_older_than(_job(date_posted="2020-01-01"), 0, now=NOW) is False
 
 
 def test_dual_trigger_requires_high_fit_AND_favorable():

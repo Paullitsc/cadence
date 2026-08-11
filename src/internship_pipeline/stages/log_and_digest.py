@@ -6,12 +6,13 @@ outreach drafts awaiting approval (including their Gmail-draft links), and possi
 recruiter replies — WRITE it to a local HTML file, and, when ``DIGEST_EMAIL_ENABLED``
 + Gmail are configured, email it to yourself (the only outbound action the daily
 run performs). Replies from contacts we actually emailed transition those outreach
-rows ``sent -> replied``, and applications whose job hasn't been re-seen in
-``application_expiry_days`` transition ``pending_review -> expired`` (storage only —
-never the tracker sheet's human-owned Status column), so the lifecycle is tracked
-in storage and the pending queue doesn't grow unbounded. Storage reads, the expiry
-pass, and the reply scan are all best-effort: a failure degrades that section to
-empty rather than breaking the run.
+rows ``sent -> replied``, and applications transition ``pending_review -> expired``
+(storage only — never the tracker sheet's human-owned Status column) on either of
+two signals: the job hasn't been re-seen in any feed for ``application_expiry_days``,
+or the job was POSTED more than ``posting_max_age_days`` ago. Either way the lifecycle
+is tracked in storage and the pending queue doesn't grow unbounded. Storage reads, the
+expiry passes, and the reply scan are all best-effort: a failure degrades that section
+to empty rather than breaking the run.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from ..models import (
 from ..networking.sequence import awaiting_person_count, outstanding_actions
 from ..outreach.replies import correlate_replies, scan_replies
 from ..tracker.rows import spreadsheet_url
+from ..triggers import posted_older_than
 
 NAME = "log_and_digest"
 
@@ -73,6 +75,25 @@ def _expire_stale_applications(storage, settings) -> int:
     return expired
 
 
+def _expire_old_postings(storage, settings) -> int:
+    """Move ``pending_review`` applications to ``expired`` when the JOB was posted
+    more than ``posting_max_age_days`` days ago — independent of ``last_seen_at``
+    (a listing can keep getting re-scraped by feeds for weeks after the role is
+    effectively dead). Jobs with no parseable ``date_posted`` are left alone.
+    Disabled when ``posting_max_age_days <= 0``.
+    """
+    if settings.posting_max_age_days <= 0:
+        return 0
+    expired = 0
+    for app in storage.list_applications(status="pending_review"):
+        job = storage.get_job(app.dedupe_key)
+        if job is not None and posted_older_than(job, settings.posting_max_age_days):
+            app.status = "expired"
+            storage.save_application(app)
+            expired += 1
+    return expired
+
+
 def run(ctx: StageContext) -> StageResult:
     log.info("stage start", extra={"run_id": ctx.run_id, "stage": NAME})
     s = ctx.settings
@@ -83,9 +104,12 @@ def run(ctx: StageContext) -> StageResult:
     # Gmail draft is still awaiting the human's send, so it stays in the digest.
     storage = ctx.get_storage()
     # Expire stale applications FIRST so the pending count/queue below already
-    # excludes them.
+    # excludes them. Two independent signals, both storage-only: not re-seen in any
+    # feed, and the underlying job posted too long ago.
     expired_count = _safe(
         lambda: _expire_stale_applications(storage, s), 0, ctx, "application expiry")
+    expired_count += _safe(
+        lambda: _expire_old_postings(storage, s), 0, ctx, "posting age expiry")
     pending_apps = _safe(
         lambda: storage.list_applications(status="pending_review"), [], ctx, "applications")
     pending_outreach: list[Outreach] = _safe(

@@ -123,6 +123,12 @@ class Settings(BaseSettings):
     # after the initial "prepared" write (see tracker/rows.py) — storage's
     # Application.status is a separate, pipeline-internal queue state. 0 disables.
     application_expiry_days: int = 21
+    # A pending_review application whose JOB was posted more than this many days ago
+    # is moved OUT of pending_review the same way — a second, more direct staleness
+    # signal than application_expiry_days above (a listing can keep getting re-scraped
+    # by feeds for weeks after the role is effectively dead). Jobs with no parseable
+    # date_posted are left alone (unknown age is never assumed stale). 0 disables.
+    posting_max_age_days: int = 30
 
     # --- Phase 3: cold outreach ---
     # Contact lookup providers. Both OFF by default; the pipeline always falls back
@@ -324,6 +330,11 @@ def build_dry_run_settings(*, work_dir: Optional[str] = None) -> Settings:
         networking_targets_file=str(base / "networking_targets.yaml"),
         fit_score_threshold=0.0,
         high_priority_threshold=0.0,
+        # The STALE fixture sentinel sits at exactly 30 days old on purpose (see
+        # stages/source.py) to stay OUTSIDE the favorable window while remaining a
+        # normal pending application — disable posting-age expiry here so that
+        # fixture doesn't also get swept as "too old" and break determinism.
+        posting_max_age_days=0,
         outreach_from_name="Dry Run Candidate",
         outreach_from_email="candidate@example.com",
         outreach_physical_address="123 Example St, Remoteville",
