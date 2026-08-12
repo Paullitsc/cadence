@@ -25,6 +25,7 @@ from typing import Callable
 from ..logging_config import get_logger
 from ..models import DATA_JOBS_TOTAL, DATA_NEW_JOBS, Job, StageContext, StageResult
 from ..sourcing.ats import fetch_company
+from ..sourcing.blocklist import load_blocked_companies
 from ..sourcing.companies import load_companies
 from ..sourcing.github_readme import fetch_readme_internships
 from ..sourcing.http import build_client
@@ -248,6 +249,21 @@ def run(ctx: StageContext) -> StageResult:
         seen.add(key)
         deduped.append(job)
 
+    # Drop blocklisted companies before they're ever stored — they must never be
+    # scored, tailored, or reach the review app (blocked_companies.yaml).
+    blocked = load_blocked_companies(ctx.settings.blocked_companies_file)
+    if blocked:
+        before = len(deduped)
+        deduped = [j for j in deduped if j.company_name.strip().lower() not in blocked]
+        blocked_count = before - len(deduped)
+        if blocked_count:
+            log.info(
+                "dropped blocklisted-company jobs",
+                extra={"run_id": ctx.run_id, "count": blocked_count},
+            )
+    else:
+        blocked_count = 0
+
     result = ctx.get_storage().upsert_jobs(deduped)
 
     ctx.data[DATA_NEW_JOBS] = result.new
@@ -255,6 +271,7 @@ def run(ctx: StageContext) -> StageResult:
     counts = {
         "jobs_sourced": len(deduped),
         "jobs_new": result.new_count,
+        "jobs_blocked": blocked_count,
         "sources_failed": len(failed),
     }
     # ok=False only when EVERY attempted source failed (per_source empty, failed

@@ -50,7 +50,7 @@ def test_run_all_stages_offline_succeeds(offline_settings):
 def test_subset_runs_only_selected_stage(offline_settings):
     record = run_daily.run_pipeline(stages=["source"], settings=offline_settings)
     assert record.status == "success"
-    assert set(record.counts) == {"jobs_sourced", "jobs_new", "sources_failed"}
+    assert set(record.counts) == {"jobs_sourced", "jobs_new", "jobs_blocked", "sources_failed"}
 
 
 def test_unknown_stage_recorded_as_error(offline_settings):

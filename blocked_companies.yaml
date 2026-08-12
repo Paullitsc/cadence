@@ -1,0 +1,7 @@
+# Working blocklist read by the pipeline (BLOCKED_COMPANIES_FILE, default this
+# file). Add one company name per line under `companies:` — schema and matching
+# rules are documented in blocked_companies.example.yaml. Empty is fine; it
+# blocks nothing.
+companies:
+  - TikTok
+  - ByteDance

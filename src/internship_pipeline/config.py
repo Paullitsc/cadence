@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     storage_backend: Literal["sqlite", "supabase"] = "sqlite"
     database_path: str = "data/pipeline.db"
     companies_file: str = "companies.yaml"
+    blocked_companies_file: str = "blocked_companies.yaml"
 
     # --- Phase 1: sourcing ---
     # SimplifyJobs raw listings.json (path/branch confirmed against the live repo).

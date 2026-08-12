@@ -1,0 +1,14 @@
+# Companies to exclude from the pipeline (Phase 1.x).
+#
+# Any sourced job whose company name matches an entry here (case-insensitive,
+# exact match on the full name — not a substring, so "Meta" won't also block
+# "Metaphor Health") is dropped before it's even stored: it's never scored,
+# never tailored, and never reaches the review app or the tracker sheet.
+#
+#   cp blocked_companies.example.yaml blocked_companies.yaml   # then edit
+#
+# This file has no secrets (just company names), so it's committed like
+# companies.yaml — the daily GitHub Actions run reads it straight from the
+# checkout. Missing file = nothing blocked.
+companies:
+  - Example Company Inc

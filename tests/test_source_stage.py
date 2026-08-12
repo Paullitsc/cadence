@@ -16,11 +16,14 @@ from internship_pipeline.sourcing.simplify import parse_simplify
 def _settings(tmp_path, **overrides) -> Settings:
     empty = tmp_path / "companies.yaml"
     empty.write_text("companies: []\n", encoding="utf-8")
+    empty_blocklist = tmp_path / "blocked_companies.yaml"
+    empty_blocklist.write_text("companies: []\n", encoding="utf-8")
     defaults = dict(
         _env_file=None,
         storage_backend="sqlite",
         database_path=str(tmp_path / "pipeline.db"),
         companies_file=str(empty),
+        blocked_companies_file=str(empty_blocklist),
         enable_simplify=False,
         enable_jsearch=False,
         enable_github_readme=False,
@@ -77,3 +80,46 @@ def test_ok_true_when_some_sources_succeed_and_others_fail(tmp_path, monkeypatch
     assert result.ok is True  # at least one source succeeded
     assert result.counts["sources_failed"] == 1
     assert result.counts["jobs_sourced"] == 1
+
+
+def test_blocked_company_dropped_before_storage(tmp_path, monkeypatch):
+    blocklist = tmp_path / "blocked_companies_custom.yaml"
+    blocklist.write_text("companies:\n  - Bad Corp\n", encoding="utf-8")
+    settings = _settings(tmp_path, enable_simplify=True, blocked_companies_file=str(blocklist))
+
+    def two_jobs(client, url, *, max_retries=3, active_only=True):
+        return parse_simplify(
+            [
+                {"company_name": "Bad Corp", "title": "Intern", "url": "https://x/1", "active": True},
+                {"company_name": "Acme", "title": "Intern", "url": "https://x/2", "active": True},
+            ]
+        )
+
+    monkeypatch.setattr(source_stage, "fetch_simplify", two_jobs)
+    ctx = StageContext(run_id="r1", settings=settings)
+    result = source_stage.run(ctx)
+
+    assert result.counts["jobs_blocked"] == 1
+    assert result.counts["jobs_sourced"] == 1
+    assert [j.company_name for j in ctx.data["new_jobs"]] == ["Acme"]
+
+
+def test_blocklist_match_is_case_insensitive_and_exact(tmp_path, monkeypatch):
+    blocklist = tmp_path / "blocked_companies_custom.yaml"
+    blocklist.write_text("companies:\n  - meta\n", encoding="utf-8")
+    settings = _settings(tmp_path, enable_simplify=True, blocked_companies_file=str(blocklist))
+
+    def two_jobs(client, url, *, max_retries=3, active_only=True):
+        return parse_simplify(
+            [
+                {"company_name": "META", "title": "Intern", "url": "https://x/1", "active": True},
+                {"company_name": "Metaphor Health", "title": "Intern", "url": "https://x/2", "active": True},
+            ]
+        )
+
+    monkeypatch.setattr(source_stage, "fetch_simplify", two_jobs)
+    ctx = StageContext(run_id="r1", settings=settings)
+    result = source_stage.run(ctx)
+
+    assert result.counts["jobs_blocked"] == 1
+    assert [j.company_name for j in ctx.data["new_jobs"]] == ["Metaphor Health"]
