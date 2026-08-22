@@ -15,6 +15,9 @@ Company-driven, not job-driven: targets come from ``networking_targets.yaml``
    durable, git-committed record; the sheet is the daily working surface.
 3. **Runs the escalation timers**: a sent connect/message that aged past its
    window becomes ``email_due`` (Phase 6b will draft that email).
+3b. **Looks up the escalation recipient** (``networking/lookup.py``) for stalled
+   rows with a name but no address — Hunter/Apollo, name-targeted, and only a
+   *verified* answer is stored. Off unless enabled + a provider is keyed.
 4. **Drafts** connect notes (top-up to the daily budget, tier 1 first) and
    post-accept messages (always), deterministic or LLM-grounded — see
    ``networking/copy.py``. NOTHING is sent: LinkedIn is never automated
@@ -37,6 +40,7 @@ from ..models import StageContext, StageResult
 from ..networking import draft_networking_copy, load_targets, rank_bullets, seed_people
 from ..networking.copy import draft_networking_email
 from ..networking.email import create_networking_email_drafts
+from ..networking.lookup import LookupResult, resolve_person_emails
 from ..networking.merge import merge_identity
 from ..networking.models import (
     STATUS_CLOSED,
@@ -55,10 +59,12 @@ from ..networking.rows import (
 from ..networking.sequence import DRAFT_CONNECT, DRAFT_EMAIL, MARK_EMAIL_DUE, plan_due
 from ..networking.sheet import NETWORKING_TAB, ensure_networking_tab, sort_networking_rows
 from ..networking.targets import write_targets
+from ..outreach.contacts import LookupBudget
 from ..outreach.footer import build_email_body
 from ..outreach.gmail import default_draft_fn
 from ..resume import all_bullets, load_master_resume
 from ..resume.llm import build_default_complete
+from ..sourcing.http import build_client
 from ..tracker import build_tracker_services
 from ..tracker.sheets import apply_plan, delete_rows, read_rows
 
@@ -169,6 +175,30 @@ def run(ctx: StageContext) -> StageResult:  # noqa: PLR0915 - orchestration is l
         reply_window_days=s.networking_reply_window_days,
         email_escalation_enabled=s.networking_email_escalation_enabled,
     )
+    # 3b) Phase 6b: go find the escalation recipient's address. Before drafting on
+    # purpose — an address found now lets step 4b land the very same run's email as
+    # a Gmail draft, instead of the row waiting a day for the next pass. Only rows
+    # at email_due/email_drafted with a name and no address are candidates.
+    lookup = LookupResult()
+    if s.networking_email_escalation_enabled and s.networking_email_lookup_enabled:
+        paid_enabled = bool(
+            (s.enable_hunter and s.hunter_api_key) or (s.enable_apollo and s.apollo_api_key)
+        )
+        # No provider → no client → resolve_person_emails is a no-op, and the stage
+        # stays fully offline exactly as it was before.
+        lookup_client = build_client(s.http_timeout) if paid_enabled else None
+        try:
+            lookup = resolve_person_emails(
+                people,
+                settings=s,
+                storage=storage,
+                client=lookup_client,
+                budget=LookupBudget(remaining=max(0, s.networking_max_lookups_per_run)),
+            )
+        finally:
+            if lookup_client is not None:
+                lookup_client.close()
+
     needs_drafting = any(a.action != MARK_EMAIL_DUE for a in due)
     resume = None
     bullets = []
@@ -280,6 +310,8 @@ def run(ctx: StageContext) -> StageResult:  # noqa: PLR0915 - orchestration is l
         "networking_messages_drafted": messages,
         "networking_escalated": escalated,
         "networking_emails_drafted": emails,
+        "networking_emails_found": lookup.found,
+        "networking_emails_unresolved": lookup.unverified,
         "networking_email_drafts_created": email_drafts_created,
         "networking_human_updates": human_updates,
         "networking_roster_pulled": merged.pulled,

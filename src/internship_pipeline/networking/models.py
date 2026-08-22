@@ -138,7 +138,10 @@ class Person(BaseModel):
     name: Optional[str] = None
     role: Optional[str] = None
     linkedin_url: Optional[str] = None
-    email: Optional[str] = None  # optional seed; Phase 6b can look it up instead
+    # Optional seed. When blank, Phase 6b's ``lookup.py`` fills it from Hunter/Apollo
+    # for a stalled row — but only with a VERIFIED provider answer, because
+    # ``email.eligible_for_email_draft`` treats anything stored here as send-ready.
+    email: Optional[str] = None
     # What THIS person has done, as a noun phrase ("building end-to-end
     # fraud-detection pipelines"). Same job as ``company_hook`` for the recipient:
     # without it a draft can only ever talk about the candidate. Roster-only —

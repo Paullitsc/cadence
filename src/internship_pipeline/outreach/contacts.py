@@ -1,10 +1,19 @@
-"""Contact lookup for cold outreach (Phase 3).
+"""Contact lookup for cold outreach (Phase 3) and networking escalations (Phase 6b).
 
 Two paid providers behind feature flags — **Hunter.io** and **Apollo.io** — plus a
 free, always-available fallback that GUESSES the company email pattern
 (``first.last@company.com``) **without ever claiming certainty**. A guessed contact
 is returned with ``verified=False``, ``confidence=None`` and an explicit note so it
 can never be mistaken for a confirmed address.
+
+Two orchestrators, because the two callers ask different questions:
+
+* ``find_contact`` — *"anyone worth emailing at this company"* (Phase 3 cold apply).
+  Hunter domain-search ranks recruiting/talent addresses first; any hit will do.
+* ``find_person_contact`` — *"the address of THIS named person"* (Phase 6b). Paul
+  picked the human; emailing a different one would send a draft addressed to someone
+  else. So it queries the name-targeted endpoints and every provider hit must clear
+  ``names_match`` before it is accepted — a mismatch degrades to the pattern guess.
 
 Free tiers are small (Hunter ~25-50 searches/mo, Apollo ~100 credits/mo), so paid
 lookups are: (a) gated behind ``ENABLE_HUNTER`` / ``ENABLE_APOLLO`` + a key,
@@ -23,6 +32,7 @@ Split mirrors ``sourcing/``: ``parse_*`` are pure (fixture-testable, no I/O);
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Optional
 from urllib.parse import urlsplit
@@ -119,6 +129,58 @@ def company_domain_guess(company_name: str) -> Optional[str]:
     if not words:
         return None
     return "".join(words) + ".com"
+
+
+# --------------------------------------------------------------------------- #
+# Name matching (pure) — the guard on person-targeted lookups
+# --------------------------------------------------------------------------- #
+# Dropped before comparing: they carry no identity and providers are inconsistent
+# about including them.
+_NAME_NOISE: frozenset[str] = frozenset(
+    "jr sr ii iii iv phd md mba dr mr mrs ms prof".split()
+)
+_NAME_SPLIT_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _name_tokens(name: Optional[str]) -> list[str]:
+    """Lowercased identity tokens: no punctuation, no initials, no suffixes."""
+    raw = _NAME_SPLIT_RE.split((name or "").lower())
+    return [t for t in raw if len(t) > 1 and t not in _NAME_NOISE]
+
+
+def _first_matches(expected: str, returned: str) -> bool:
+    """Equal, or one is a prefix of the other — covers Dan/Daniel, Chris/Christopher.
+
+    Deliberately not a nickname table: an unrecognized diminutive (Mike/Michael)
+    just falls back to the pattern guess, which is the safe direction to fail.
+    """
+    return expected == returned or expected.startswith(returned) or returned.startswith(expected)
+
+
+def names_match(expected: Optional[str], returned: Optional[str]) -> bool:
+    """True when a provider's contact plausibly IS the person we asked about.
+
+    Surname must match exactly and the given name must match under
+    ``_first_matches``. A missing/unusable name on either side is **never** a
+    match: an unnamed provider hit is exactly the case where we would otherwise
+    email the wrong human. A mononym expectation ("Cher") matches any returned
+    token, since there is no surname to anchor on.
+    """
+    want = _name_tokens(expected)
+    got = _name_tokens(returned)
+    if not want or not got:
+        return False
+    if len(want) == 1:
+        return any(_first_matches(want[0], token) for token in got)
+    return want[-1] == got[-1] and _first_matches(want[0], got[0])
+
+
+def split_name(name: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """``"Ada Lovelace"`` -> ``("Ada", "Lovelace")``; a mononym has no surname."""
+    tokens = _name_tokens(name)
+    if not tokens:
+        return None, None
+    return tokens[0], (tokens[-1] if len(tokens) > 1 else None)
 
 
 def guess_email_pattern(
@@ -221,6 +283,70 @@ def fetch_hunter(client: httpx.Client, *, domain: str, api_key: str, max_retries
     return parse_hunter_domain_search(payload)
 
 
+def parse_hunter_email_finder(payload: dict[str, Any], *, expected_name: Optional[str]) -> Optional[Contact]:
+    """Read a Hunter email-finder response for ONE named person.
+
+    Unlike domain-search this is already name-targeted, but the response is still
+    checked against ``expected_name`` when Hunter echoes one back — a provider that
+    silently answers with a different human must not produce a "verified" contact.
+    Returns None when there is no address to use.
+    """
+    # VERIFY: Hunter v2 email-finder shape: {"data": {"email","score","domain",
+    #   "first_name","last_name","position","verification":{"status","date"}}}
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return None
+    email = data.get("email")
+    if not email:
+        return None
+    name = " ".join(p for p in (data.get("first_name"), data.get("last_name")) if p) or None
+    # Hunter omitting the name is fine — the query itself pinned the person. A name
+    # that comes back and disagrees is not.
+    if name and expected_name and not names_match(expected_name, name):
+        log.info(
+            "hunter email-finder returned a different person; discarding",
+            extra={"expected": expected_name, "returned": name},
+        )
+        return None
+    score = int(data["score"]) if data.get("score") is not None else None
+    return Contact(
+        email=email,
+        name=name or expected_name,
+        title=data.get("position"),
+        source="hunter",
+        confidence=score,
+        verified=bool(score is not None and score >= 80),
+        note=None if (score and score >= 80) else
+        "Low-confidence Hunter result — double-check the address before sending.",
+    )
+
+
+def fetch_hunter_email_finder(
+    client: httpx.Client,
+    *,
+    domain: str,
+    first_name: str,
+    last_name: str,
+    api_key: str,
+    expected_name: Optional[str] = None,
+    max_retries: int = 3,
+) -> Optional[Contact]:
+    """Ask Hunter for one named person's address at ``domain``."""
+    # VERIFY: endpoint per Hunter API v2 docs (api.hunter.io/v2/email-finder).
+    payload = get_json(
+        client,
+        "https://api.hunter.io/v2/email-finder",
+        params={
+            "domain": domain,
+            "first_name": first_name,
+            "last_name": last_name,
+            "api_key": api_key,
+        },
+        max_retries=max_retries,
+    )
+    return parse_hunter_email_finder(payload, expected_name=expected_name)
+
+
 # --------------------------------------------------------------------------- #
 # Apollo.io (pure parse + network fetch)
 # --------------------------------------------------------------------------- #
@@ -265,14 +391,31 @@ def parse_apollo_people(payload: dict[str, Any]) -> Optional[Contact]:
 
 
 def fetch_apollo(
-    client: httpx.Client, *, company_name: str, domain: Optional[str], api_key: str, max_retries: int = 3
+    client: httpx.Client,
+    *,
+    company_name: str,
+    domain: Optional[str],
+    api_key: str,
+    person_name: Optional[str] = None,
+    max_retries: int = 3,
 ) -> Optional[Contact]:
-    """Call Apollo people match for a company. Returns a Contact or None."""
+    """Call Apollo people match for a company, optionally for one named person.
+
+    With ``person_name`` the match is narrowed to that human (Phase 6b); without
+    it Apollo picks whoever it considers the best match at the company (Phase 3).
+    """
     # VERIFY: endpoint + auth for Apollo. Docs show POST api.apollo.io/v1/people/match
     # with the key in an "X-Api-Key" header (some accounts use ?api_key=). Confirm both.
     body: dict[str, Any] = {"organization_name": company_name, "reveal_personal_emails": False}
     if domain:
         body["domain"] = domain
+    if person_name:
+        first, last = split_name(person_name)
+        body["name"] = person_name
+        if first:
+            body["first_name"] = first
+        if last:
+            body["last_name"] = last
     payload = post_json(
         client,
         "https://api.apollo.io/v1/people/match",
@@ -330,3 +473,88 @@ def find_contact(
                 log.warning("apollo lookup failed; falling back", extra={"company": company_name, "error": repr(exc)})
 
     return guess_email_pattern(company_name, domain=domain)
+
+
+def find_person_contact(
+    *,
+    person_name: str,
+    company_name: str,
+    settings: Settings,
+    client: Optional[httpx.Client],
+    budget: LookupBudget,
+    domain: Optional[str] = None,
+    allow_paid: bool = True,
+) -> Contact:
+    """Resolve the address of ONE named person at a company (Phase 6b).
+
+    The person-targeted sibling of ``find_contact``: Hunter's email-finder first
+    (it takes the name directly), then Apollo's people-match narrowed to that name.
+    Every hit must clear ``names_match`` — a provider answering with a different
+    human is discarded rather than returned, because the drafted email already
+    greets the person Paul chose.
+
+    Falls back to the free pattern guess exactly like ``find_contact``, so this
+    never raises for lack of a provider and never claims certainty. Each real
+    provider call spends one unit of ``budget`` whether or not it finds an address.
+
+    Unlike ``find_contact``, an *unverified* hit does not end the search: the only
+    caller stores verified addresses and nothing else, so a low-confidence Hunter
+    score is worth spending Apollo's credit on rather than returning something that
+    will be thrown away. The best unverified answer is kept and returned if Apollo
+    does no better.
+    """
+    domain = domain or company_domain_guess(company_name)
+    first, last = split_name(person_name)
+    fallback: Optional[Contact] = None  # best unverified answer seen so far
+
+    if allow_paid and client is not None:
+        if (
+            settings.enable_hunter and settings.hunter_api_key and domain
+            and first and last and budget.can_spend()
+        ):
+            budget.spend()
+            try:
+                contact = fetch_hunter_email_finder(
+                    client, domain=domain, first_name=first, last_name=last,
+                    api_key=settings.hunter_api_key, expected_name=person_name,
+                    max_retries=settings.http_max_retries,
+                )
+                if contact and contact.email:
+                    if contact.verified:
+                        return contact
+                    fallback = contact
+            except Exception as exc:  # skip-on-error: fall through to the next option
+                log.warning(
+                    "hunter email-finder failed; falling back",
+                    extra={"company": company_name, "error": repr(exc)},
+                )
+
+        if settings.enable_apollo and settings.apollo_api_key and budget.can_spend():
+            budget.spend()
+            try:
+                contact = fetch_apollo(
+                    client, company_name=company_name, domain=domain,
+                    api_key=settings.apollo_api_key, person_name=person_name,
+                    max_retries=settings.http_max_retries,
+                )
+                # Apollo matches fuzzily on the organization, so the name guard
+                # matters more here than it does for Hunter's targeted endpoint.
+                if contact and contact.email:
+                    if not names_match(person_name, contact.name):
+                        log.info(
+                            "apollo returned a different person; discarding",
+                            extra={"expected": person_name, "returned": contact.name},
+                        )
+                    elif contact.verified:
+                        return contact
+                    elif fallback is None:
+                        fallback = contact
+            except Exception as exc:
+                log.warning(
+                    "apollo person lookup failed; falling back",
+                    extra={"company": company_name, "error": repr(exc)},
+                )
+
+    if fallback is not None:
+        return fallback
+    return guess_email_pattern(company_name, domain=domain, first=first, last=last)

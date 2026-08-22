@@ -3,9 +3,10 @@
 Mirrors ``outreach/drafts.py`` (Phase 5) but the artifact lives on the ``Person``
 row, not an ``Outreach`` record. A row that stalled on LinkedIn and had its
 escalation email drafted (``email_drafted``) becomes a Gmail draft only when there
-is a real recipient address to send to — a seeded ``person.email``. Everything
-else stays as the drafted copy in the digest/sheet with a best-guess address for
-the human to complete (MVP: no paid contact lookup).
+is a real recipient address to send to — a ``person.email`` either seeded on the
+roster or resolved by ``networking/lookup.py``, which stores a looked-up address
+only when the provider returns it verified. Everything else stays as the drafted
+copy in the digest/sheet with a best-guess address for the human to complete.
 
 Gates, in order: the sender identity is configured; the CAN-SPAM physical address
 is set (never draft a non-compliant email — the body already carries the footer,
@@ -32,9 +33,12 @@ log = get_logger(__name__)
 def eligible_for_email_draft(person: Person) -> bool:
     """True when this row's escalation email should become a real Gmail draft.
 
-    Requires a concrete recipient address (a seeded/known ``email``) — a guessed
-    pattern never becomes a ready-to-send draft, matching Phase-5's verified-only
-    rule; those stay flagged in the digest for the human to complete.
+    Requires a concrete recipient address (a seeded or looked-up ``email``) — a
+    guessed pattern never becomes a ready-to-send draft, matching Phase-5's
+    verified-only rule; those stay flagged in the digest for the human to
+    complete. ``lookup.py`` upholds the same rule from the other side: it declines
+    to persist anything a provider didn't return verified, so any address that
+    reaches this check is one we trust.
     """
     return (
         person.status == STATUS_EMAIL_DRAFTED

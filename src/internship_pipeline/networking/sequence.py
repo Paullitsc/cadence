@@ -139,8 +139,14 @@ def _first_last(name: str | None) -> tuple[str | None, str | None]:
 
 
 def _email_hint(person: Person) -> str:
-    """A best-guess recipient address (or pattern) to show for a not-yet-verified
-    escalation email — always a GUESS, surfaced so the human can complete it."""
+    """The recipient address to show for an escalation email awaiting a send.
+
+    A known address (seeded on the roster, or resolved by ``lookup.py`` — which
+    only ever stores verified ones) is shown as-is. Otherwise this falls back to a
+    pattern GUESS, surfaced so the human can complete it by hand.
+    """
+    if (person.email or "").strip():
+        return person.email.strip()
     first, last = _first_last(person.name)
     contact = guess_email_pattern(
         person.company_name, domain=person.company_domain, first=first, last=last
@@ -184,6 +190,13 @@ def outstanding_actions(
             instruction = (
                 "LinkedIn stalled — an escalation email is waiting in your Gmail "
                 "drafts. Review, then send it and set Status to email_sent."
+            )
+        elif (person.email or "").strip():
+            # A known-good address but no Gmail draft — Gmail isn't configured, or
+            # the create failed. Nothing left to research; just send it.
+            instruction = (
+                "LinkedIn stalled — an escalation email is drafted below. Send it "
+                f"to {person.email.strip()}, then set Status to email_sent."
             )
         else:
             hint = _email_hint(person)

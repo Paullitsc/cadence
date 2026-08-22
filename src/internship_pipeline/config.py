@@ -239,6 +239,19 @@ class Settings(BaseSettings):
     # draft for you to send. Needs the gmail.compose scope on the OAuth token
     # (folded into gmail_scopes below) + a CAN-SPAM physical address to send.
     networking_email_escalation_enabled: bool = False
+    # Phase 6b — automatic recipient lookup for that escalation. OFF by default →
+    # a stalled row without a seeded address stays manual (the digest shows a
+    # pattern guess to complete). ON (and with Hunter/Apollo enabled + keyed) →
+    # the stage asks the provider for THAT NAMED PERSON's address and stores it
+    # only when the provider returns it verified; a guess is never persisted, so
+    # nothing auto-drafts to an address we aren't sure of.
+    networking_email_lookup_enabled: bool = False
+    # Cap on billable lookups per run for the networking side, SEPARATE from
+    # outreach_max_lookups_per_run so a busy cold-apply day can't eat the quota a
+    # stalled networking thread needs (and vice versa). Small on purpose: a row
+    # only becomes eligible after a full connect/message cycle already stalled, so
+    # real-world volume is ~0-1/day even though the two caps add up on paper.
+    networking_max_lookups_per_run: int = 3
 
     # --- CV review app (local, human-in-the-loop CV selection) ---
     # `python -m internship_pipeline.review` serves the review UI on localhost:
