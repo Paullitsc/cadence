@@ -187,3 +187,19 @@ def test_sort_specs_group_a_company_that_grew_after_its_first_row():
         "8vc-alloy-therapeutics-1",  # a longer name never splits the shorter one
         "8vc-zebra-1",  # tier 2 sorts below every tier 1
     ]
+
+
+def test_next_step_stops_asking_for_an_address_the_pipeline_already_found():
+    # The sheet's instruction has to track the three real states of an
+    # email_drafted row, or a looked-up address (networking/lookup.py) still tells
+    # Paul to go find one. Mirrors sequence.outstanding_actions.
+    step = lambda p: next_step(p, accept_window_days=10, reply_window_days=7)  # noqa: E731
+    drafted = dict(status="email_drafted", draft_kind="email", name="Jane Roe")
+
+    unknown = step(person("x-1", **drafted))
+    known = step(person("x-2", email="jane@robotics.co", **drafted))
+    in_gmail = step(person("x-3", email="jane@robotics.co", gmail_draft_id="d1", **drafted))
+
+    assert "find the recipient's email" in unknown
+    assert "jane@robotics.co" in known and "find the recipient" not in known
+    assert "Gmail drafts" in in_gmail and "jane@robotics.co" not in in_gmail

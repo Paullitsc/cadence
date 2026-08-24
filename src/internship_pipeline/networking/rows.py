@@ -100,6 +100,14 @@ def next_step(person: Person, *, accept_window_days: int, reply_window_days: int
     if status == STATUS_EMAIL_DRAFTED:
         if person.gmail_draft_id:
             return "You: review the escalation email in Gmail drafts → send → set Status to email_sent."
+        if (person.email or "").strip():
+            # A known address (seeded, or resolved by ``networking/lookup.py``) but no
+            # Gmail draft — Gmail isn't configured, or the create failed. There is
+            # nothing left to research, so don't send the human hunting for it.
+            return (
+                f"You: send the drafted escalation email to {person.email.strip()} "
+                "→ set Status to email_sent."
+            )
         return "You: find the recipient's email, send the drafted escalation email → set Status to email_sent."
     if status == STATUS_EMAIL_SENT:
         return "Escalation email sent — waiting for a reply."
